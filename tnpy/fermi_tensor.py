@@ -890,15 +890,14 @@ class GTensor(Z2gTensor):
         # find the corresponding degeneracy dimensions
         dims_I, dims_J = [], []
         for q in qns_I:
-            dims = [self._shape[i][q[l]] for l, i in enumerate(group_dims[0])]
+            dims = [self._shape[d][q[i]] for i, d in enumerate(group_dims[0])]
             dims_I.append(math.prod(dims))
         for q in qns_J:
-            dims = [self._shape[i][q[l]] for l, i in enumerate(group_dims[1])]
+            dims = [self._shape[d][q[i]] for i, d in enumerate(group_dims[1])]
             dims_J.append(math.prod(dims))
 
         mat = torch.zeros(sum(dims_I), sum(dims_J), dtype=self._dtype)
         # reshape and push each block into the matrix
-        temp = torch.zeros(sum(dims_I), sum(dims_J), dtype=self._dtype)
         for q, t in self._blocks.items():
             qI, qJ = tuple([q[l] for l in group_dims[0]]), tuple([q[l] for l in group_dims[1]])
             if parity == (sum(qI) % 2):
@@ -906,90 +905,76 @@ class GTensor(Z2gTensor):
                 i, j = qns_I.index(qI), qns_J.index(qJ)
                 # !reshaped tensor may not be contiguous, which cannot be operated by 'view()' or 'kron()'
                 m = t.reshape(dims_I[i], dims_J[j]).contiguous()
-                temp.zero_()
                 # locate the block
                 sI, sJ = slice(sum(dims_I[:i]), sum(dims_I[:i+1])), slice(sum(dims_J[:j]), sum(dims_J[:j+1]))
-                # print(qI, qJ, i, j, sI, sJ)
-                temp[sI, sJ] = m
-                mat += temp
+                mat[sI, sJ] = m
 
         return mat
 
     @staticmethod
-    def restore_blocks(mat, qnums: tuple, shape: tuple, divide: int) -> dict:
+    def restore_blocks(mat, qns: tuple, shape: tuple, group_dims: tuple) -> dict:
         r'''
-        restore the GTensor blocks from a parity matrix
+        restore GTensor blocks from a parity matrix
 
         Parameters
         ----------
-        mat: Tensor, a parity matrix
-        qnums: tuple[tuple], quantum numbers of two parts
-        shape: tuple[int], shape of block tensors
-        divide: int, the divide index
+        mat: tensor, a parity matrix
+        qns: tuple[tuple], quantum numbers of two parts I and J
+        shape: tuple[tuple], shape of the desired GTensor
+        group_dims: tuple[tuple], two groups of dimensions for I and J
         '''
 
-        dim_I, dim_J = math.prod(shape[:divide]), math.prod(shape[divide:])
+        assert len(shape) == (len(group_dims[0])+len(group_dims[1])), 'group_dims and shape are not consistent'
+
+        qns_I, qns_J = qns[0], qns[1]
+        # find the corresponding degeneracy dimensions
+        dims_I, dims_J = [], []
+        for q in qns_I:
+            dims = [shape[d][q[i]] for i, d in enumerate(group_dims[0])]
+            dims_I.append(math.prod(dims))
+        for q in qns_J:
+            dims = [shape[d][q[i]] for i, d in enumerate(group_dims[1])]
+            dims_J.append(math.prod(dims))
+
         blocks = {}
-        for c in itertools.product(qnums[0], qnums[1]):
-            i, j = c[0], c[1]
-            # retrieve that matrix 
-            m = mat[(qnums[0].index(i))*dim_I:(qnums[0].index(i)+1)*dim_I, (qnums[1].index(j))*dim_J:(qnums[1].index(j)+1)*dim_J]
-            blocks[(i+j)] = torch.reshape(m, shape)
+        for c in itertools.product(qns_I, qns_J):
+            qI, qJ = c[0], c[1]
+            # restore the quantum number
+            q = [None]*len(shape)
+            for i, p in enumerate(group_dims[0]):
+                q[p] = qI[i]
+            for i, p in enumerate(group_dims[1]):
+                q[p] = qJ[i]
+            # locate the block
+            i, j = qns_I.index(qI), qns_J.index(qJ)
+            sI, sJ = slice(sum(dims_I[:i]), sum(dims_I[:i+1])), slice(sum(dims_J[:j]), sum(dims_J[:j+1]))
+            m =  mat[sI, sJ].clone()
+            # reshape the block
+            block_shape = [shape[i][l] for i, l in enumerate(q)]
+            blocks[tuple(q)] = m.reshape(block_shape)
 
         return blocks
 
     @classmethod
-    def restore_from_parity_matrices(cls, mats: tuple, qnums: tuple, dual: tuple, shape: tuple, divide: int, info=None):
+    def contruct_from_parity_mats(cls, mats: tuple, qns: tuple, dual: tuple, shape: tuple, group_dims: tuple, cflag=False, info=None):
         r'''
         build a GTensor from two parity matrices
 
         Parameters
         ----------
         mats: tuple[Tensor], even and odd parity matrices
-        qnums: tuple[tuple], even and odd parity sector quantum numbers
+        qns: tuple[tuple], even and odd parity sector quantum numbers
         dual: tuple[int],
         shape: tuple[int], shape of block tensors
-        divide: int
+        group_dims: tuple[tuple], two groups of dimensions for I and J
         '''
 
-        blocks_e = cls.restore_blocks(mats[0], qnums[0], shape, divide)
-        blocks_o = cls.restore_blocks(mats[1], qnums[1], shape, divide)
+        blocks_e = cls.restore_blocks(mats[0], qns[0], shape, group_dims)
+        blocks_o = cls.restore_blocks(mats[1], qns[1], shape, group_dims)
         blocks = dict(blocks_e)
         blocks.update(blocks_o)
 
-        return cls(dual, blocks, info=info)
-
-class GdTensor(Z2gTensor):
-    r'''
-    class of Grassmann tensor to be used in fermionic systems
-    equvialent to symmetric Z2-graded tensor 
-    '''
-
-    def __init__(self, dual: tuple, blocks: dict, cflag=False, info=None) -> None:
-        r'''
-        Parameters
-        ----------
-        dual: tuple, (0, 0, 1, 1), denoting the type of vector spaces associated with each bond
-            0: super vector space (outgoing); 1: dual super vector space (incoming)
-        blocks: dict,
-            key: parity quantum numbers, value: bosonic degeneracy tensor
-        '''
-
-        super(GTensor, self).__init__(dual, blocks, info=info)
-
-        assert self._rank[0] > 0 and self._rank[1] > 0, 'GTensor must have both outgoing and incoming bonds'
-
-        # check the Z2 symmetry
-        for q in self._blocks:
-            if not self.check_z2symmetry(dual, q):
-                raise TypeError('quantum number %s does not fulfill the Z2-symmetry' % q)
-
-       # shape of the block tensor
-        if 0 == len(self._blocks):
-            self._tensor = 0
-            # self._bloc = (tuple(self._blocks.values())[0]).shape
-
-
+        return cls(dual, shape, blocks, cflag, info)
 
 # ----------------------------------
 # module-level functions for GTensor
