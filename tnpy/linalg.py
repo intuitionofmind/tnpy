@@ -31,7 +31,7 @@ def svd(mat, full_matrices=None):
 
 def tensor_svd(input_tensor, group_dims: tuple, svd_dims=None, cut_off=None) -> tuple:
     r'''
-    SVD a tensor T to T = ASB
+    SVD a tensor T to T = A S B
 
     Parameters
     ----------
@@ -162,20 +162,19 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     gt_r: GTensor, the residual tensor
     '''
 
-    dims = group_dims[0]+group_dims[1]
     # permute to the new order
-    temp_gt = input_gt.permute(dims)
-    cut = len(group_dims[0])
+    temp_gt = input_gt.permute(group_dims[0]+group_dims[1])
+    split = len(group_dims[0])
 
     # new dual for Q and R
-    dual_q, dual_r = temp_gt.dual[:cut]+(1,), (0,)+temp_gt.dual[cut:]
+    dual_q, dual_r = temp_gt.dual[:split]+(1,), (0,)+temp_gt.dual[split:]
     # build parity quantum numbers and matrices
     dims = tuple(range(temp_gt.ndim))
-    gdims = dims[:cut], dims[cut:]
-    mat_qns_e = temp_gt.parity_mat_qnums(gdims, parity=0)
-    mat_qns_o = temp_gt.parity_mat_qnums(gdims, parity=1)
-    mat_e = temp_gt.parity_mat(mat_qns_e, gdims, parity=0)
-    mat_o = temp_gt.parity_mat(mat_qns_o, gdims, parity=1)
+    split_dims = dims[:split], dims[split:]
+    mat_qns_e = temp_gt.parity_mat_qnums(split_dims, parity=0)
+    mat_qns_o = temp_gt.parity_mat_qnums(split_dims, parity=1)
+    mat_e = temp_gt.parity_mat(mat_qns_e, split_dims, parity=0)
+    mat_o = temp_gt.parity_mat(mat_qns_o, split_dims, parity=1)
     # QR in these two sectors, respectively
     qe, re = torch.linalg.qr(mat_e, mode='reduced')
     qo, ro = torch.linalg.qr(mat_o, mode='reduced')
@@ -190,8 +189,8 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     dim_e = min(mat_e.shape[0], mat_e.shape[1])
     dim_o = min(mat_o.shape[0], mat_o.shape[1])
     # new shape for Q and R
-    shape_q = temp_gt.shape[:cut]+((dim_e, dim_o),)
-    shape_r = ((dim_e, dim_o),)+temp_gt.shape[cut:]
+    shape_q = temp_gt.shape[:split]+((dim_e, dim_o),)
+    shape_r = ((dim_e, dim_o),)+temp_gt.shape[split:]
 
     # restore new GTensors
     # pay attention to the new group_dims
@@ -229,20 +228,19 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     gt_r: GTensor, the residual tensor
     '''
 
-    dims = group_dims[0]+group_dims[1]
     # permute to the new order
-    temp_gt = input_gt.permute(dims)
-    cut = len(group_dims[0])
+    temp_gt = input_gt.permute(group_dims[0]+group_dims[1])
+    split = len(group_dims[0])
 
     # new dual for Q and R
-    dual_q, dual_r = temp_gt.dual[:cut]+(0,), (1,)+temp_gt.dual[cut:]
+    dual_q, dual_r = temp_gt.dual[:split]+(0,), (1,)+temp_gt.dual[split:]
     # build parity quantum numbers and matrices
     dims = tuple(range(temp_gt.ndim))
-    gdims = dims[:cut], dims[cut:]
-    mat_qns_e = temp_gt.parity_mat_qnums(gdims, parity=0)
-    mat_qns_o = temp_gt.parity_mat_qnums(gdims, parity=1)
-    mat_e = temp_gt.parity_mat(mat_qns_e, gdims, parity=0)
-    mat_o = temp_gt.parity_mat(mat_qns_o, gdims, parity=1)
+    split_dims = dims[:split], dims[split:]
+    mat_qns_e = temp_gt.parity_mat_qnums(split_dims, parity=0)
+    mat_qns_o = temp_gt.parity_mat_qnums(split_dims, parity=1)
+    mat_e = temp_gt.parity_mat(mat_qns_e, split_dims, parity=0)
+    mat_o = temp_gt.parity_mat(mat_qns_o, split_dims, parity=1)
     # QR in these two sectors, respectively
     qe, re = torch.linalg.qr(mat_e, mode='reduced')
     qo, ro = torch.linalg.qr(mat_o, mode='reduced')
@@ -257,8 +255,8 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     dim_e = min(mat_e.shape[0], mat_e.shape[1])
     dim_o = min(mat_o.shape[0], mat_o.shape[1])
     # new shape for Q and R
-    shape_q = temp_gt.shape[:cut]+((dim_e, dim_o),)
-    shape_r = ((dim_e, dim_o),)+temp_gt.shape[cut:]
+    shape_q = temp_gt.shape[:split]+((dim_e, dim_o),)
+    shape_r = ((dim_e, dim_o),)+temp_gt.shape[split:]
 
     # restore new GTensors
     # pay attention to the new group_dims
@@ -285,25 +283,22 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
 
     return gt_q, gt_r
 
-def gtensor_svd(input_tensor: GTensor, group_dims: tuple, svd_dims=None, cut_off=None, full_matrices=None):
+def gtensor_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
     r'''
-    SVD a GTensor in the direction: T = U-<-S-<-V
+    SVD a GTensor in the direction: T = U -<- S -<- V
+    with normal trace between them
 
     Parameters
     ----------
-    input_tensor: GTensor,
+    input_gt: GTensor,
     group_dims: tuple[tuple], two tuple[int] consist of bonds of 'U' and 'V'
     svd_dims: tuple[int], optional, the SVD dims
     cut_off: int, optional, SVD truncation
     '''
 
-    flag = False
-    if full_matrices is not None:
-        flag = full_matrices
-
     dims = group_dims[0]+group_dims[1]
     # permute to the new order
-    temp_tensor = gpermute(input_tensor, dims)
+    temp_gt = input_gt.permute(dims)
     split = len(group_dims[0])
 
     # new duals for new tensors: U <-- S <-- V
