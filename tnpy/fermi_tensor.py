@@ -28,7 +28,7 @@ class Z2gTensor(object):
 
         return ft
 
-    def __init__(self, dual: tuple, shape: tuple, blocks: dict, parity: int, cflag=False, info=None) -> None:
+    def __init__(self, dual: tuple, shape: tuple, blocks: dict, cflag=False, info=None) -> None:
         r'''
         Parameters
         ----------
@@ -51,11 +51,12 @@ class Z2gTensor(object):
         self._blocks = blocks
         # sort the blocks by viewing 'key' as a binary number
         self._blocks = dict(sorted(self._blocks.items(), key=lambda item: int(''.join(str(e) for e in item[0]), 2)))
-        # check the parity and block shapes 
+        # check the parity and block shapes
+        parity = sum(next(iter(self._blocks.keys()))) & 1
         for k, v in self._blocks.items():
-            assert parity == sum(k) & 1, 'quantum number is not consistent with the parity!'
+            assert parity == sum(k) & 1, 'quantum number is not consistent with the parity'
             block_shape = [self._shape[i][q] for i, q in enumerate(k)]
-            assert v.shape == tuple(block_shape), 'block shape is not consistent with the whole shape!'
+            assert v.shape == tuple(block_shape), 'block shape is not consistent with the whole shape'
             if cflag:
                 self._blocks[k] = v.cdouble()
 
@@ -140,7 +141,7 @@ class Z2gTensor(object):
                 block_shape = [shape[i][p] for i, p in enumerate(q)]
                 blocks[q] = torch.rand(block_shape)
 
-        return cls(dual, shape, blocks, parity, cflag, info)
+        return cls(dual, shape, blocks, cflag, info)
 
     @staticmethod
     def permute_qnums(qs: tuple, dims: tuple):
@@ -405,14 +406,14 @@ class GTensor(Z2gTensor):
             key: parity quantum numbers, value: bosonic degeneracy tensor
         '''
 
-        def _check_Z2symmetry(dual, qnums):
+        def _check_Z2symmetry(dual, q):
 
             qo, qi = 0, 0
-            for b, q in zip(dual, qnums):
+            for b, k in zip(dual, q):
                 if b:
-                    qi += q
+                    qi += k
                 else:
-                    qo += q
+                    qo += k
             # Z2 parity fusion condition: in == out
             if (qo % 2) == (qi % 2):
                 return True
@@ -421,7 +422,7 @@ class GTensor(Z2gTensor):
 
         # check the Z2 symmetry
         for k in blocks:
-            assert _check_Z2symmetry(dual, k), ('quantum number %s not fulfill the Z2 parity symmetry' % k)
+            assert _check_Z2symmetry(dual, k), 'quantum number not fulfill the Z2 parity symmetry'
 
         # list ALL possible quantum numbers fulfilling the Z2-symmetry
         qns_list = [(0, 1)]*len(dual)
@@ -434,7 +435,7 @@ class GTensor(Z2gTensor):
                 block_shape = [shape[i][v] for i, v in enumerate(qs)]
                 blocks[qs] = torch.zeros(block_shape)
 
-        super(GTensor, self).__init__(dual, shape, blocks, 0, cflag, info)
+        super(GTensor, self).__init__(dual, shape, blocks, cflag, info)
         # check the dual
         assert self._rank[0] > 0 and self._rank[1] > 0, 'GTensor must have both outgoing and incoming bonds'
 
@@ -869,9 +870,9 @@ class GTensor(Z2gTensor):
                 qns_J.append(qJ)
 
         # reomve possible duplicates
-        return list(dict.fromkeys(qns_I).keys()), list(dict.fromkeys(qns_J).keys())
+        return tuple(dict.fromkeys(qns_I).keys()), tuple(dict.fromkeys(qns_J).keys())
 
-    def parity_mat(self, group_dims: tuple, parity: int):
+    def parity_mat(self, qns: tuple, group_dims: tuple, parity: int):
         r'''
         build the parity symmetric matrix $C_{IJ}^{00, 11}$
 
@@ -880,13 +881,14 @@ class GTensor(Z2gTensor):
         qns: tuple, parity quantum numbers, as the basis
             refer to: parity_matrix_qnums()
         group_dims: tuple[tuple]
+        parity: int, parity sector
 
         Returns
         -------
         mat: tensor
         '''
 
-        qns_I, qns_J = self.parity_mat_qnums(group_dims, parity)
+        qns_I, qns_J = qns[0], qns[1]
         # find the corresponding degeneracy dimensions
         dims_I, dims_J = [], []
         for q in qns_I:
@@ -901,7 +903,7 @@ class GTensor(Z2gTensor):
         for q, t in self._blocks.items():
             qI, qJ = tuple([q[l] for l in group_dims[0]]), tuple([q[l] for l in group_dims[1]])
             if parity == (sum(qI) % 2):
-                # locate the indices
+                # locate indices
                 i, j = qns_I.index(qI), qns_J.index(qJ)
                 # !reshaped tensor may not be contiguous, which cannot be operated by 'view()' or 'kron()'
                 m = t.reshape(dims_I[i], dims_J[j]).contiguous()
@@ -956,7 +958,7 @@ class GTensor(Z2gTensor):
         return blocks
 
     @classmethod
-    def contruct_from_parity_mats(cls, mats: tuple, qns: tuple, dual: tuple, shape: tuple, group_dims: tuple, cflag=False, info=None):
+    def construct_from_parity_mats(cls, mats: tuple, qns: tuple, dual: tuple, shape: tuple, group_dims: tuple, cflag=False, info=None):
         r'''
         build a GTensor from two parity matrices
 
@@ -977,30 +979,22 @@ class GTensor(Z2gTensor):
         return cls(dual, shape, blocks, cflag, info)
 
 # ----------------------------------
-# module-level functions for GTensor
+# module-level functions for fermi tensor
 # ----------------------------------
-
-def graded_conj(t: GTensor, dim: int) -> GTensor:
-    return t.graded_conj(dim)
-
-def gpermute(t: GTensor, dims: tuple) -> GTensor:
-    return t.permute(dims)
-
-def fuse_bonds(t: GTensor, bonds: tuple, pos=None, sub_dims=None):
-    return t.fuse_bonds(bonds, pos, sub_dims)
-
-def gcontract(*args: any, info=None) -> GTensor:
-    r'''
-    return a GTensor
-    '''
-
-    return GTensor.contract(*args, info=info)
 
 def z2gcontract(*args: any, info=None) -> Z2gTensor:
     r'''
-    return a Z2gTensor
+    Z2gTensor contraction
     '''
 
     return Z2gTensor.contract(*args, info=info)
 
+def gpermute(t: GTensor, dims: tuple) -> GTensor:
+    return t.permute(dims)
 
+def gcontract(*args: any, info=None) -> GTensor:
+    r'''
+    GTensor contraction
+    '''
+
+    return GTensor.contract(*args, info=info)
