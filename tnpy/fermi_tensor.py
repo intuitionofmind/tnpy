@@ -380,9 +380,7 @@ class Z2gTensor(object):
         if 0 == len(new_dual):
             return new_blocks[()]
         else:
-            p = sum(tuple(new_blocks.keys())[0]) & 1
-            return cls(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, parity=p, cflag=False, info=info)
-
+            return cls(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, cflag=False, info=info)
 
 class GTensor(Z2gTensor):
     r'''
