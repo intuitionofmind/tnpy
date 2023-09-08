@@ -179,12 +179,10 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     qe, re = torch.linalg.qr(mat_e, mode='reduced')
     qo, ro = torch.linalg.qr(mat_o, mode='reduced')
     # new quantum numbers for Q and R
-    # even
-    mat_qns_qe = mat_qns_e[0], ((0,),)
-    mat_qns_re = ((0,),), mat_qns_e[1]
-    # odd
-    mat_qns_qo = mat_qns_o[0], ((1,),)
-    mat_qns_ro = ((1,),), mat_qns_o[1]
+    qns_qe = mat_qns_e[0], ((0,),)
+    qns_qo = mat_qns_o[0], ((1,),)
+    qns_re = ((0,),), mat_qns_e[1]
+    qns_ro = ((1,),), mat_qns_o[1]
     # new dimensions from QR
     dim_e = min(mat_e.shape[0], mat_e.shape[1])
     dim_o = min(mat_o.shape[0], mat_o.shape[1])
@@ -197,10 +195,10 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     dims_q = list(range(len(shape_q)))
     dims_r = list(range(len(shape_r)))
     gt_q = GTensor.construct_from_parity_mats(
-            mats=(qe, qo), qns=(mat_qns_qe, mat_qns_qo), dual=dual_q, shape=shape_q,
+            mats=(qe, qo), qns=(qns_qe, qns_qo), dual=dual_q, shape=shape_q,
             group_dims=(tuple(dims_q[:-1]), (dims_q[-1],)))
     gt_r = GTensor.construct_from_parity_mats(
-            mats=(re, ro), qns=(mat_qns_re, mat_qns_ro), dual=dual_r, shape=shape_r,
+            mats=(re, ro), qns=(qns_re, qns_ro), dual=dual_r, shape=shape_r,
             group_dims=((0,), tuple(dims_r[1:])))
 
     # permute to the desired order if needed
@@ -245,12 +243,10 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     qe, re = torch.linalg.qr(mat_e, mode='reduced')
     qo, ro = torch.linalg.qr(mat_o, mode='reduced')
     # new quantum numbers for Q and R
-    # even
-    mat_qns_qe = mat_qns_e[0], ((0,),)
-    mat_qns_re = ((0,),), mat_qns_e[1]
-    # odd
-    mat_qns_qo = mat_qns_o[0], ((1,),)
-    mat_qns_ro = ((1,),), mat_qns_o[1]
+    qns_qe = mat_qns_e[0], ((0,),)
+    qns_qo = mat_qns_o[0], ((1,),)
+    qns_re = ((0,),), mat_qns_e[1]
+    qns_ro = ((1,),), mat_qns_o[1]
     # new dimensions from QR
     dim_e = min(mat_e.shape[0], mat_e.shape[1])
     dim_o = min(mat_o.shape[0], mat_o.shape[1])
@@ -263,10 +259,10 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     dims_q = list(range(len(shape_q)))
     dims_r = list(range(len(shape_r)))
     gt_q = GTensor.construct_from_parity_mats(
-            mats=(qe, qo), qns=(mat_qns_qe, mat_qns_qo), dual=dual_q, shape=shape_q,
+            mats=(qe, qo), qns=(qns_qe, qns_qo), dual=dual_q, shape=shape_q,
             group_dims=(tuple(dims_q[:-1]), (dims_q[-1],)))
     gt_r = GTensor.construct_from_parity_mats(
-            mats=(re, ro), qns=(mat_qns_re, mat_qns_ro), dual=dual_r, shape=shape_r,
+            mats=(re, ro), qns=(qns_re, qns_ro), dual=dual_r, shape=shape_r,
             group_dims=((0,), tuple(dims_r[1:])))
 
     # supertrace sign is assigned to Q
@@ -293,37 +289,41 @@ def gtensor_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=Non
     input_gt: GTensor,
     group_dims: tuple[tuple], two tuple[int] consist of bonds of 'U' and 'V'
     svd_dims: tuple[int], optional, the SVD dims
-    cut_off: int, optional, SVD truncation
+    cut_off: tuple[int], optional, SVD dim truncation for even and odd sectors, respectively
     '''
 
-    dims = group_dims[0]+group_dims[1]
     # permute to the new order
-    temp_gt = input_gt.permute(dims)
+    temp_gt = input_gt.permute(group_dims[0]+group_dims[1])
     split = len(group_dims[0])
 
-    # new duals for new tensors: U <-- S <-- V
-    dual_u, dual_s, dual_v = temp_tensor.dual[:split]+(1,), (0, 1), (0,)+temp_tensor.dual[split:]
-    # build the divided qunumber numbers based on 's'
-    qnums_e, qnums_o = temp_tensor.parity_matrix_qnums(divide=split)
-    # fuse to even and odd sector matrices and obtain quantum numbers
-    mat_e, mat_o = temp_tensor.parity_matrices(qns=(qnums_e, qnums_o), divide=split)
+    # new duals for new tensors: U -<- S -<- V
+    dual_u, dual_s, dual_v = temp_gt.dual[:split]+(1,), (0, 1), (0,)+temp_gt.dual[split:]
+    # build parity quantum numbers and matrices
+    dims = tuple(range(temp_gt.ndim))
+    split_dims = dims[:split], dims[split:]
+    mat_qns_e = temp_gt.parity_mat_qnums(split_dims, parity=0)
+    mat_qns_o = temp_gt.parity_mat_qnums(split_dims, parity=1)
+    mat_e = temp_gt.parity_mat(mat_qns_e, split_dims, parity=0)
+    mat_o = temp_gt.parity_mat(mat_qns_o, split_dims, parity=1)
 
     # SVD in these two sectors, respectively
-    u_e, s_e, v_e = svd(mat_e, full_matrices=flag)
-    u_o, s_o, v_o = svd(mat_o, full_matrices=flag)
-    s_e, s_o = torch.diag(s_e), torch.diag(s_o)
-    # new quantum numbers in these two sectors
-    qnums_u_e = qnums_e[0], ((0,),)
-    qnums_s_e = ((0,),), ((0,),)
-    qnums_v_e = ((0,),), qnums_e[1]
-    qnums_u_o = qnums_o[0], ((1,),)
-    qnums_s_o = ((1,),), ((1,),)
-    qnums_v_o = ((1,),), qnums_o[1]
-    # block shapes for new tensors
-    dim_from_svd = min(mat_e.shape[0], mat_e.shape[1])
-    # if SVD truncation is set
-    if (cut_off is not None) and (cut_off < dim_from_svd):
-        dim_from_svd = cut_off
+    ue, se, ve = svd(mat_e, full_matrices=False)
+    uo, so, vo = svd(mat_o, full_matrices=False)
+    se, so = se.diag(), so.diag()
+    # new dims from SVD
+    svd_dims = min(mat_e.shape), min(mat_o.shape)
+
+    # new quanum numbers for U, S, V
+    mat_qns_ue = mat_qns_e[0], ((0,),)
+    mat_qns_uo = mat_qns_o[0], ((1,),)
+    mat_qns_ve = ((0,),), mat_qns_e[1]
+    mat_qns_vo = ((1,),), mat_qns_o[1]
+    mat_qns_se = ((0,),), ((0,),)
+    mat_qns_so = ((1,),), ((1,),)
+
+    if cut_off is not None:
+        svd_dims = min(cut_off[0], svd_dims[0]), min(cut_off[1], svd_dims[1])
+
     # block shape for new tensors
     shape_u = temp_tensor.block_shape[:split]+(dim_from_svd,)
     shape_s = (dim_from_svd, dim_from_svd)
