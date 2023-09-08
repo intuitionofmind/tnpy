@@ -1,149 +1,10 @@
-import math
 import torch
 torch.set_default_dtype(torch.float64)
-import opt_einsum as oe
-import scipy
 
-from tnpy import GTensor, gcontract, Z2gTensor
-# import tnpy as tp
+import math
 
-# ---------------------
-# functions for Tensor
-# ---------------------
-
-def svd(mat, full_matrices=None):
-    r'''
-    robust SVD
-    also refer to: https://tenpy.github.io/reference/tenpy.linalg.svd_robust.html
-    '''
-
-    flag = False 
-    if full_matrices is not None:
-        flag = full_matrices
-
-    try:
-        u, s, v = torch.linalg.svd(mat, full_matrices=flag)
-    except torch._C._LinAlgError:
-        u, s, v = scipy.linalg.svd(mat, full_matrices=flag, overwrite_a=True, check_finite=False, lapack_driver='gesvd')
-        u, s, v = torch.tensor(u), torch.tensor(s), torch.tensor(v)
-
-    return u, s, v
-
-def tensor_svd(input_tensor, group_dims: tuple, svd_dims=None, cut_off=None) -> tuple:
-    r'''
-    SVD a tensor T to T = A S B
-
-    Parameters
-    ----------
-    input_tensor: Tensor
-    group_dims: tuple[tuple], tuple[0] bonds going to A; tuple[1] bonds going to B
-    svd_dims: tuple[int], positions of new SVD bonds in A and B
-            if svd_dims[0] > A.ndim, then it will be place at the end
-            similar to B
-    cut_off: int, optional, if a trunction on singular value spectrum is required
-
-    Returns
-    -------
-    u_tensor: Tensor, isometric
-    s: 1d Tensor, singular values
-    v_tensor: Tensor, isometric
-
-    Examples
-    --------
-    #    b         d            e
-    #    |         |            |
-    # a--*--d = c--*--P,P--Q,Q--*-b
-    #   / \        |           
-    #  d   c       a
-
-    T_{abcde} -> \sum_{PQ} A_{cdPa} S_{PQ} B_{ebQ}
-
-    Indeed we have three steps to accomplish this:
-    step #0: T_{abcde} -> T_{cdaeb}
-    step #1: T_{cdaeb} -> \sum_{PQ} A_{cdaP} S_{PQ} B_{Qeb}
-    step #2: A_{cdaP} -> A_{cdPa}; B_{Qeb} -> B_{ebQ}
-
-    Jupyter notebook:
-
-    t = torch.rand(4, 8, 16, 32, 16)
-    %timeit -r 5 -n 100 a, s, b = tensor_svd(t, group_dims=((2, 3, 0), (4, 1)), svd_dims=(2, 2))
-    print(a.shape, s.shape, b.shape)
-    res = pytn.contract('abcd,cg,efg->dfabe', a, s.diag(), b)
-    print('Test tensor SVD:', torch.linalg.norm(t-res))
-    '''
-
-    # permute to the operation order
-    new_tensor = torch.permute(input_tensor, group_dims[0]+group_dims[1])
-    new_shape = new_tensor.shape
-    # divide
-    divide = len(group_dims[0])
-    # reshape to a matrix
-    # Python>=3.8
-    mat_shape = math.prod(new_shape[:divide]), math.prod(new_shape[divide:])
-    mat = torch.reshape(new_tensor, mat_shape)
-    # SVD
-    u, s, v = svd(mat)
-    svd_dim = min(mat_shape)
-    # if SVD truncation is needed
-    if (cut_off is not None) and (cut_off < svd_dim):
-        svd_dim = cut_off
-    # new shapes appended with SVD indices
-    # column vectors of U and rows of V are orthogonal
-    u_shape, v_shape = new_shape[:divide]+(svd_dim,), (svd_dim,)+new_shape[divide:]
-    u_tensor, v_tensor = torch.reshape(u[:, :svd_dim], u_shape), torch.reshape(v[:svd_dim, :], v_shape)
-
-    if svd_dims is not None:
-        u_dims, v_dims = list(range(u_tensor.ndim)), list(range(v_tensor.ndim))
-        u_dims.insert(svd_dims[0], u_dims.pop(-1))
-        v_dims.insert(svd_dims[1], v_dims.pop(0))
-        u_tensor = torch.permute(u_tensor, u_dims)
-        v_tensor = torch.permute(v_tensor, v_dims)
-
-    return u_tensor, s[:svd_dim], v_tensor
-
-def tensor_qr(input_tensor, group_dims: tuple, qr_dims=None) -> tuple:
-    r''' 
-    QR decomposition of a tensor
-    T = QR
-    Q is the isometric tensor, R is the residual tensor
-
-    Parameters
-    ----------
-    input_tensor: Tensor
-    group_dims: tuple[tuple], tuple[0]: bonds of Q; tuple[1]: bonds of R
-    qr_dims: tuple[int], optional, where the new QR bonds in Q and R
-        Defalut: put two new QR bonds at the tail of Q and head of R, respectively
-
-    Returns
-    -------
-    q_tensor: Tensor, isometric tensor
-    r_tensor: Tensor, residual tensor
-    '''
-
-    # permute to the operation order
-    new_tensor = torch.permute(input_tensor, group_dims[0]+group_dims[1])
-    new_shape = new_tensor.shape
-    divide = len(group_dims[0])
-    # Python>=3.8
-    mat_shape = math.prod(new_shape[:divide]), math.prod(new_shape[divide:])
-    mat = torch.reshape(new_tensor, mat_shape)
-    q, r = torch.linalg.qr(mat, mode='reduced')
-    qr_dim = min(mat_shape)
-    q_shape, r_shape = new_shape[:divide]+(qr_dim,), (qr_dim,)+new_shape[divide:]
-    q_tensor, r_tensor = torch.reshape(q, q_shape), torch.reshape(r, r_shape)
-
-    # put the qr_dims in the desired order
-    if qr_dims is not None:
-        q_dims, r_dims = list(range(q_tensor.ndim)), list(range(r_tensor.ndim))
-        q_dims.insert(qr_dims[0], q_dims.pop(-1))
-        r_dims.insert(qr_dims[1], r_dims.pop(0))
-        q_tensor, r_tensor = torch.permute(q_tensor, q_dims), torch.permute(r_tensor, r_dims)
-
-    return q_tensor, r_tensor
-
-# ---------------------
-# functions for GTensor
-# ---------------------
+from tnpy import GTensor
+from tnpy.linalg import svd
 
 def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     r''' 
@@ -166,8 +27,6 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     temp_gt = input_gt.permute(group_dims[0]+group_dims[1])
     split = len(group_dims[0])
 
-    # new dual for Q and R
-    dual_q, dual_r = temp_gt.dual[:split]+(1,), (0,)+temp_gt.dual[split:]
     # build parity quantum numbers and matrices
     dims = tuple(range(temp_gt.ndim))
     split_dims = dims[:split], dims[split:]
@@ -178,6 +37,9 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     # QR in these two sectors, respectively
     qe, re = torch.linalg.qr(mat_e, mode='reduced')
     qo, ro = torch.linalg.qr(mat_o, mode='reduced')
+
+    # new dual for Q and R
+    dual_q, dual_r = temp_gt.dual[:split]+(1,), (0,)+temp_gt.dual[split:]
     # new quantum numbers for Q and R
     qns_qe = mat_qns_e[0], ((0,),)
     qns_qo = mat_qns_o[0], ((1,),)
@@ -190,7 +52,7 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     shape_q = temp_gt.shape[:split]+((dim_e, dim_o),)
     shape_r = ((dim_e, dim_o),)+temp_gt.shape[split:]
 
-    # restore new GTensors
+    # construct new GTensors
     # pay attention to the new group_dims
     dims_q = list(range(len(shape_q)))
     dims_r = list(range(len(shape_r)))
@@ -230,8 +92,6 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     temp_gt = input_gt.permute(group_dims[0]+group_dims[1])
     split = len(group_dims[0])
 
-    # new dual for Q and R
-    dual_q, dual_r = temp_gt.dual[:split]+(0,), (1,)+temp_gt.dual[split:]
     # build parity quantum numbers and matrices
     dims = tuple(range(temp_gt.ndim))
     split_dims = dims[:split], dims[split:]
@@ -242,6 +102,9 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     # QR in these two sectors, respectively
     qe, re = torch.linalg.qr(mat_e, mode='reduced')
     qo, ro = torch.linalg.qr(mat_o, mode='reduced')
+
+    # new dual for Q and R
+    dual_q, dual_r = temp_gt.dual[:split]+(0,), (1,)+temp_gt.dual[split:]
     # new quantum numbers for Q and R
     qns_qe = mat_qns_e[0], ((0,),)
     qns_qo = mat_qns_o[0], ((1,),)
@@ -254,7 +117,7 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None):
     shape_q = temp_gt.shape[:split]+((dim_e, dim_o),)
     shape_r = ((dim_e, dim_o),)+temp_gt.shape[split:]
 
-    # restore new GTensors
+    # construct new GTensors
     # pay attention to the new group_dims
     dims_q = list(range(len(shape_q)))
     dims_r = list(range(len(shape_r)))
