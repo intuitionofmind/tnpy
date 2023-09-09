@@ -107,8 +107,9 @@ class Z2gTensor(object):
     def blocks(self) -> dict:
         return self._blocks
 
-    def norm(self) -> dict:
-        return torch.linalg.norm(sum(self._blocks.values())).item()
+    def norm(self) -> float:
+        nors = [t.norm().item() for t in self._blocks.values()]
+        return sum(nors)
 
     def max(self):
         r'''
