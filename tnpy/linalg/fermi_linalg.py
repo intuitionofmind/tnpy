@@ -152,7 +152,9 @@ def gtensor_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=Non
     input_gt: GTensor,
     group_dims: tuple[tuple], two tuple[int] consist of bonds of 'U' and 'V'
     svd_dims: tuple[int], optional, the SVD dims
-    cut_off: tuple[int], optional, SVD dim truncation for even and odd sectors, respectively
+    cut_off: optional,
+        if: tuple[int], SVD truncation for even and odd sectors, respectively
+        elif: int, SVD truncation overall combined for even and odd sectors
     '''
 
     # permute to the new order
@@ -192,13 +194,12 @@ def gtensor_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=Non
             s = torch.cat((se, so), dim=0)
             ss = torch.sort(s, descending=True, stable=True)
             remaining_indices = ss.indices[:cut_off]
-            len_se = len(se)
             ne, no = 0, 0
             for d in remaining_indices:
-                # odd sector
-                if d.item() >= len_se:
+                # count odd sector
+                if d.item() >= len(se):
                     no += 1
-                # even sector
+                # count even sector
                 else:
                     ne += 1
             svd_shape = ne, no
@@ -287,13 +288,12 @@ def gtensor_super_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_o
             s = torch.cat((se, so), dim=0)
             ss = torch.sort(s, descending=True, stable=True)
             remaining_indices = ss.indices[:cut_off]
-            len_se = len(se)
             ne, no = 0, 0
             for d in remaining_indices:
-                # odd sector
-                if d.item() >= len_se:
+                # count odd sector
+                if d.item() >= len(se):
                     no += 1
-                # even sector
+                # count even sector
                 else:
                     ne += 1
             svd_shape = ne, no
@@ -343,52 +343,54 @@ def gtensor_super_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_o
 
 def gpinv(gt: GTensor) -> GTensor:
     r'''
-    compute the pseudoinverse of a GTensor 'gt' satisfying:
-    inv_gt*gt = 1 and gt*inv_gt = 1
+    compute the pseudoinverse of a GTensor satisfying: inv_gt*gt = 1 and gt*inv_gt = 1
 
     Returns
     -------
     inv_gt: GTensor, same dual as the input
     '''
 
-    assert isinstance(gt, GTensor) and 2 == gt.ndim, 'not a 2-dimensional GTensor(matrix)'
+    assert 2 == gt.ndim, 'not a 2-dimensional GTensor (matrix)'
 
     flag = False
     if (1, 0) == gt.dual:
-        temp_gt = gpermute(gt, (1, 0))
+        temp_gt = gt.permute(dims=(1, 0))
         flag = True
     else:
         temp_gt = gt
+
     # find pinvs block by block
     inv_blocks = {k:torch.linalg.pinv(v) for k, v in temp_gt.blocks().items()}
-    inv_gt = GTensor(temp_gt.dual, blocks=inv_blocks)
+    inv_gt = GTensor(temp_gt.dual, shape=gt.shape[::-1], blocks=inv_blocks, info=gt.info)
+
     if flag:
-        inv_gt = gpermute(inv_gt, (1, 0))
+        inv_gt = inv_gt.permute(dims=(1, 0))
 
     return inv_gt
 
 def ginv(gt: GTensor) -> GTensor:
     r'''
-    compute the pseudoinverse of a GTensor 'gt' satisfying:
-    inv_gt*gt = 1 and gt*inv_gt = 1
+    compute the inverse of a GTensor satisfying: inv_gt*gt = 1 and gt*inv_gt = 1
 
     Returns
     -------
     inv_gt: GTensor, same dual as the input
     '''
 
-    assert isinstance(gt, GTensor) and 2 == gt.ndim, 'not a 2-dimensional GTensor(matrix)'
+    assert 2 == gt.ndim, 'not a 2-dimensional GTensor (matrix)'
 
     flag = False
     if (1, 0) == gt.dual:
-        temp_gt = gpermute(gt, (1, 0))
+        temp_gt = gt.permute(dims=(1, 0))
         flag = True
     else:
         temp_gt = gt
+
     # find pinvs block by block
     inv_blocks = {k:torch.linalg.inv(v) for k, v in temp_gt.blocks().items()}
-    inv_gt = GTensor(temp_gt.dual, blocks=inv_blocks)
+    inv_gt = GTensor(temp_gt.dual, shape=gt.shape[::-1], blocks=inv_blocks, info=gt.info)
+
     if flag:
-        inv_gt = gpermute(inv_gt, (1, 0))
+        inv_gt = inv_gt.permute(dims=(1, 0))
 
     return inv_gt
