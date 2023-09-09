@@ -1,2 +1,2 @@
-from .linalg import svd, tensor_svd, tensor_qr
-from .fermi_linalg import gtensor_qr, gtensor_super_qr, gtensor_svd, gtensor_super_svd, gpinv, ginv
+from .linalg import svd, tsvd, tqr
+from .fermi_linalg import gtqr, super_gtqr, gtsvd, super_gtsvd, gpinv, ginv

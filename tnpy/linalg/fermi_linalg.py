@@ -6,7 +6,7 @@ import math
 from tnpy import GTensor
 from tnpy.linalg import svd
 
-def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
+def gtqr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
     r''' 
     QR decomposition of a GTensor like: T = Q -<- R
     with normal trace between Q and R
@@ -71,7 +71,7 @@ def gtensor_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
 
     return gt_q, gt_r
 
-def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
+def super_gtqr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
     r''' 
     QR decomposition of a GTensor like: T = Q ->- R
     with super trace between Q and R
@@ -142,7 +142,7 @@ def gtensor_super_qr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tupl
 
     return gt_q, gt_r
 
-def gtensor_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
+def gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
     r'''
     SVD a GTensor in the direction: T = U -<- S -<- V
     with normal trace between them
@@ -238,7 +238,7 @@ def gtensor_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=Non
 
     return gt_u, gt_s, gt_v
 
-def gtensor_super_svd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
+def super_gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
     r'''
     SVD a GTensor in the direction: T = U ->- S ->- V
     with super trace between them

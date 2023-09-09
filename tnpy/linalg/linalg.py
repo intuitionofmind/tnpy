@@ -21,7 +21,7 @@ def svd(mat, full_matrices=None):
 
     return u, s, v
 
-def tensor_svd(input_ten, group_dims: tuple, svd_dims=None, cut_off=None) -> tuple:
+def tsvd(input_ten, group_dims: tuple, svd_dims=None, cut_off=None) -> tuple:
     r'''
     SVD a tensor T to T = A S B
 
@@ -93,7 +93,7 @@ def tensor_svd(input_ten, group_dims: tuple, svd_dims=None, cut_off=None) -> tup
 
     return u_ten, s[:svd_dim], v_ten
 
-def tensor_qr(input_ten, group_dims: tuple, qr_dims=None) -> tuple:
+def tqr(input_ten, group_dims: tuple, qr_dims=None) -> tuple:
     r''' 
     QR decomposition of a tensor
     T = QR
