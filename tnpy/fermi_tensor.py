@@ -1,5 +1,4 @@
 import itertools
-from scipy.stats import unitary_group as ug
 import math
 import opt_einsum as oe
 
@@ -62,6 +61,7 @@ class Z2gTensor(object):
 
         self._parity = parity
         self._dtype = tuple(self._blocks.values())[0].dtype
+        self._cflag = cflag
         self._info = info
 
     @property
@@ -91,6 +91,10 @@ class Z2gTensor(object):
     @property
     def dtype(self):
         return self._dtype
+
+    @property
+    def cflag(self):
+        return self._cflag
 
     @property
     def info(self):
