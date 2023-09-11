@@ -228,7 +228,7 @@ def gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
         group_dims=((0,), tuple(dims_v[1:])))
     gt_s = GTensor.construct_from_parity_mats(
         mats=mats_s, qns=(qns_se, qns_so), dual=dual_s, shape=shape_s,
-        group_dims=((0,), (1,)))
+        group_dims=((0,), (1,)), cflag=input_gt.cflag)
 
     if svd_dims is not None:
         # permute to the desired order
@@ -322,7 +322,7 @@ def super_gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=Non
         group_dims=((0,), tuple(dims_v[1:])))
     gt_s = GTensor.construct_from_parity_mats(
         mats=mats_s, qns=(qns_se, qns_so), dual=dual_s, shape=shape_s,
-        group_dims=((0,), (1,)))
+        group_dims=((0,), (1,)), cflag=input_gt.cflag)
 
     # supertrace signs are assigned to U and V
     # unitary property of U, V should be redefined
