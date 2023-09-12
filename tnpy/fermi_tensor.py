@@ -503,7 +503,7 @@ class GTensor(Z2gTensor):
     @classmethod
     def eye(cls, dual: tuple, dims: tuple, cflag=False, info=None):
         r'''
-        generate an identity GTensor
+        generate an identity GTensor matrix
 
         Parameters
         ----------
@@ -522,7 +522,7 @@ class GTensor(Z2gTensor):
 
         blocks = {}
         blocks[(0, 0)] = torch.eye(dims[0])
-        blocks[(1, 1)] = -sgn*torch.eye(dims[1])
+        blocks[(1, 1)] = sgn*torch.eye(dims[1])
 
         return cls(dual, shape, blocks, cflag, info)
 
@@ -576,151 +576,45 @@ class GTensor(Z2gTensor):
 
         return cls(dual, shape, blocks, cflag, info)
 
-    def left_graded_mat_conj(self, iso_dim: int, super_flag=False):
+    def graded_conj(self, iso_dims: tuple, side: int, super_flag=False):
         r'''
+        graded conjugation of GTensor
 
         Parameters
         ----------
-        iso_dim: int, the uncontracted bond
+        iso_dims: tuple[int], uncontracted free bonds
+        side: int, 0 (left) or 1 (right) conjugation
         '''
 
-        assert 2 == self._ndim, 'Not a G-matrix'
-
-        dims = [1, 0]
-        new_dual = [d ^ 1 for d in self._dual]
-        new_dual.reverse()
-        # build new blocks
-        new_blocks = {}
-        for q, t in self._blocks.items():
-            # possible super trace sign should be considered
-            # left conjugation depends on dual
-            sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i != iso_dim]
-            sign = (-1)**sum(sgns)
-            new_q = list(q)
-            new_q.reverse()
-            new_blocks[tuple(new_q)] = sign*t.conj().permute((1, 0))
-
-        return GTensor(dual=tuple(new_dual), blocks=new_blocks, info=self.info)
-
-    def right_graded_mat_conj(self, iso_dim: int, super_flag=False):
-        r'''
-
-        Parameters
-        ----------
-        iso_dim: int, the uncontracted bond
-        '''
-
-        assert 2 == self._ndim, 'Not a G-matrix'
-
-        new_dual = [d ^ 1 for d in self._dual]
-        new_dual.reverse()
-        # build new blocks
-        new_blocks = {}
-        for q, t in self._blocks.items():
-            # possible super trace sign should be considered
-            # right conjugation depends on (dual ^ 1)
-            sgns = [q[i]*(self._dual[i] ^ 1) for i in range(self._ndim) if i != iso_dim]
-            sign = (-1)**sum(sgns)
-            new_q = list(q)
-            new_q.reverse()
-            new_blocks[tuple(new_q)] = sign*t.conj().permute((1, 0))
-
-        return GTensor(dual=tuple(new_dual), blocks=new_blocks, info=self.info)
-
-    def graded_conj(self, free_dims=(), flag=False):
-        r'''
-        GTensor graded conjugation
-        restore/define the isometry from GTensor's QR
-
-        Parameters
-        ----------
-        dim: int, new bond which is left from the contraction
-        super_flag: if super QR or SVD is performed and the supertrace sign is assigned to unitary tensors
-        '''
-
-
-        dims = [i for i in range(self._ndim)]
+        dims = list(range(self._ndim))
         dims.reverse()
- 
+
         new_dual = [d ^ 1 for d in self._dual]
         new_dual.reverse()
+        new_shape = list(self._shape)
+        new_shape.reverse()
+
         # build new blocks
         new_blocks = {}
         for q, t in self._blocks.items():
             # possible super trace sign should be considered
-            sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i not in free_dims]
+            sgns = []
+            for i in range(self._ndim):
+                # contracted bonds
+                if i not in iso_dims:
+                    sgns.append(q[i]*(self._dual[i] ^ side))
+                # uncontracted free bonds
+                else:
+                    sgns.append(q[i]*(self._dual[i] ^ (side ^ 1)))
             sign = (-1)**sum(sgns)
             new_q = list(q)
             new_q.reverse()
             new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
-            if flag:
-                assert 0 == self._dual[free_dims[0]], 'free bond MUST be outgoing in the super case'
-                sign *= (-1)**(q[free_dims[0]])
-            new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
 
-        # return GTensor(dual=tuple(new_dual), blocks=new_blocks, info=self.info).permute(dims)
-        return GTensor(dual=tuple(new_dual), blocks=new_blocks, info=self.info)
-
-    def graded_conj_v0(self, dim: int, super_flag=False):
-        r'''
-        GTensor graded conjugation
-        restore/define the isometry from GTensor's QR
-
-        Parameters
-        ----------
-        dim: int, new bond which is left from the contraction
-        super_flag: if super QR or SVD is performed and the supertrace sign is assigned to unitary tensors
-        '''
-
-        extra = 0
         if super_flag:
-            # the free dim must be outgoing bond
-            assert 0 == self._dual[dim], 'free bond MUST be outgoing'
-            extra = 1
-        
-        # flip the dual
-        new_dual = tuple([d ^ 1 for d in self._dual])
-        # build new blocks
-        new_blocks = {}
-        for q, t in self._blocks.items():
-            # extra graded sign
-            # supertrace signs should also be replenished
-            # double combined qnums as if to compute Q^{\dagger}Q
-            cq = list(q+q)
-            # loop through all contracted bonds except 'dim'
-            sign = 1
-            for j in range(self._ndim):
-                if j != dim:
-                    sign *= (-1)**(cq[j]*sum(cq[(j+1):(j+self._ndim)])+(self._dual[j]+extra)*cq[j])
-                    # as if already contracted, quantum numbers set to zero
-                    cq[j], cq[j+self._ndim] = 0, 0
-            new_blocks[q] = sign*t.conj()
+            pass
 
-        return GTensor(dual=new_dual, blocks=new_blocks, info=self.info)
-
-    '''
-    def graded_conj_2(self, free_dims: tuple) -> GTensor:
-        rank = len(self.dual)
-        dims = [i for i in range(rank)]
-        dims.reverse()
-
-        new_dual = [d ^ 1 for d in gt.dual]
-        # reverse
-        new_dual.reverse()
-        # build new blocks
-        new_blocks = {}
-        for q, t in gt.blocks().items():
-            # possible super trace sign should be considered
-            sgns = [q[i]*gt.dual[i] for i in range(rank) if i not in free_dims]
-            # sign = (-1)**sum(x*y for x, y in zip(q, gt.dual))
-            sign = (-1)**sum(sgns)
-            new_q = list(q)
-            new_q.reverse()
-            new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
-
-        # permute back to the original order
-        return GTensor(dual=tuple(new_dual), blocks=new_blocks).permute(dims)
-    '''
+        return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, info=self.info)
 
     def permute(self, dims: tuple):
         r'''
