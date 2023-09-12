@@ -501,7 +501,7 @@ class GTensor(Z2gTensor):
         return cls(dual, shape, blocks, cflag, info)
 
     @classmethod
-    def eye(cls, dual: tuple, dims: tuple, cflag=False, info=None):
+    def eye(cls, dual: tuple, shape: tuple, cflag=False, info=None):
         r'''
         generate an identity GTensor matrix
 
@@ -511,7 +511,7 @@ class GTensor(Z2gTensor):
         dims: tuple[int], denote the dims of even and odd sector
         '''
 
-        shape = (dims[0], dims[1]), (dims[0], dims[1])
+        assert shape[0] == shape[1], 'identity GTensor must have identical dimensions'
 
         if (0, 1) == dual:
             sgn = 1.0
@@ -521,8 +521,8 @@ class GTensor(Z2gTensor):
             raise ValueError('input dual is not valid')
 
         blocks = {}
-        blocks[(0, 0)] = torch.eye(dims[0])
-        blocks[(1, 1)] = sgn*torch.eye(dims[1])
+        blocks[(0, 0)] = torch.eye(shape[0][0])
+        blocks[(1, 1)] = sgn*torch.eye(shape[0][1])
 
         return cls(dual, shape, blocks, cflag, info)
 
@@ -551,7 +551,7 @@ class GTensor(Z2gTensor):
         return cls(dual, shape, blocks, cflag, info)
 
     @classmethod
-    def rand_diag(cls, dual: tuple, dims: tuple, cflag=False, info=None):
+    def rand_diag(cls, dual: tuple, shape: tuple, cflag=False, info=None):
         r'''
         generate an identity GTensor
 
@@ -561,7 +561,7 @@ class GTensor(Z2gTensor):
         dims: tuple[int], denote the dims of even and odd sector
         '''
 
-        shape = (dims[0], dims[1]), (dims[0], dims[1])
+        assert shape[0] == shape[1], 'diagonal GTensor must have identical dimensions'
 
         if (0, 1) == dual:
             sgn = 1.0
@@ -571,8 +571,8 @@ class GTensor(Z2gTensor):
             raise ValueError('input dual is not valid')
 
         blocks = {}
-        blocks[(0, 0)] = torch.rand(dims[0], dims[0])
-        blocks[(1, 1)] = -sgn*torch.rand(dims[1], dims[1])
+        blocks[(0, 0)] = torch.rand(shape[0][0]).diag()
+        blocks[(1, 1)] = sgn*torch.rand(shape[0][1]).diag()
 
         return cls(dual, shape, blocks, cflag, info)
 
