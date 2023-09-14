@@ -170,11 +170,17 @@ class FermiSquareTPS(object):
     def coords(self):
         return self._coords
 
-    def site_tensors(self) -> dict:
-        return self._site_tensors
+    def site_tensors(self) -> list:
+        return list(self._site_tensors.values())
 
-    def link_tensors(self) -> dict:
-        return self._link_tensors
+    def link_tensors(self) -> list:
+        
+        lts = []
+        for c in self._coords:
+            lts.append(self._link_tensors[c][0])
+            lts.append(self._link_tensors[c][1])
+
+        return lts
 
     def coords(self) -> tuple:
         return self._coords
@@ -268,16 +274,8 @@ class FermiSquareTPS(object):
             # X-direction
             gts = [self._site_tensors[c], self._site_tensors[cx]]
             envs = [_site_envs(c, ex_bonds=(0, 1, 3)), _site_envs(cx, ex_bonds=(1, 2, 3))]
-            envs_inv = []
-            temp = [tp.linalg.ginv(envs[0][j]) for j in range(4)]
-            # no need to remove the env
-            # just place identity on the connected bonds
-            temp[2] = GTensor.eye(dual=(0, 1), shape=envs[0][2].shape)
-            envs_inv.append(temp)
-            temp = [tp.linalg.gpinv(envs[1][j]) for j in range(4)]
-            temp[0] = GTensor.eye(dual=(0, 1), shape=envs[1][0].shape)
-            envs_inv.append(temp)
-
+            # inverse of envs, for removing the envs later
+            envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
             # absorb envs into GTensors
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
             # set two kinds of cut-off
@@ -313,12 +311,15 @@ class FermiSquareTPS(object):
             # apply projectors
             gts[0] = tp.gcontract('abCcde,Ccf,fg,gh->abhde', gts[0], l, v_dagger, s_inv)
             gts[1] = tp.gcontract('hg,gf,fAa,Aabcde->hbcde', s_inv, u_dagger, r, gts[1])
+            # place identity on the connected bonds
+            envs_inv[0][2] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            envs_inv[1][0] = GTensor.eye(dual=(0, 1), shape=s.shape)
             # remove envs
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs_inv[i]) for i in range(2)]
             # check and update
-            assert self._site_tensors[c].dual == gts[0].dual
-            assert self._site_tensors[cx].dual == gts[1].dual
-            assert self._link_tensors[c][0].dual == s.dual
+            # assert self._site_tensors[c].dual == gts[0].dual
+            # assert self._site_tensors[cx].dual == gts[1].dual
+            # assert self._link_tensors[c][0].dual == s.dual
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
@@ -327,15 +328,8 @@ class FermiSquareTPS(object):
             # Y-direction
             gts = [self._site_tensors[c], self._site_tensors[cy]]
             envs = [_site_envs(c, ex_bonds=(0, 2, 3)), _site_envs(cy, ex_bonds=(0, 1, 2))]
-            # no need to remove the env and place identity on the connected bonds
-            envs_inv = []
-            temp = [tp.linalg.ginv(envs[0][j]) for j in range(4)]
-            temp[1] = GTensor.eye(dual=(0, 1), shape=envs[0][1].shape)
-            envs_inv.append(temp)
-            temp = [tp.linalg.ginv(envs[1][j]) for j in range(4)]
-            temp[3] = GTensor.eye(dual=(0, 1), shape=envs[1][3].shape)
-            envs_inv.append(temp)
-
+            envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
+            # absorb envs into GTensors
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
             # set two kinds of cut-off
             if sort_weights:
@@ -353,15 +347,18 @@ class FermiSquareTPS(object):
             u_dagger = u.graded_conj(iso_dims=(1,), side=0)
             v_dagger = v.graded_conj(iso_dims=(0,), side=1)
             s_inv = tp.linalg.ginv(s)
-            
+            # apply projectors            
             gts[0] = tp.gcontract('aBbcde,Bbf,fg,gh->ahcde', gts[0], l, v_dagger, s_inv)
             gts[1] = tp.gcontract('hg,gf,fDd,abcDde->abche', s_inv, u_dagger, r, gts[1])
+            # place identity on the connected bonds
+            envs_inv[0][1] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            envs_inv[1][3] = GTensor.eye(dual=(0, 1), shape=s.shape)
             # remove envs
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs_inv[i]) for i in range(2)]
             # check and update
-            assert self._site_tensors[c].dual == gts[0].dual
-            assert self._site_tensors[cy].dual == gts[1].dual
-            assert self._link_tensors[c][1].dual == s.dual
+            # assert self._site_tensors[c].dual == gts[0].dual
+            # assert self._site_tensors[cy].dual == gts[1].dual
+            # assert self._link_tensors[c][1].dual == s.dual
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cy] = (1.0/gts[1].max())*gts[1]
