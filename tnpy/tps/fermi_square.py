@@ -230,7 +230,7 @@ class FermiSquareTPS(object):
 
         return mgts
 
-    def simple_update_proj_loop(self, te_mpo: tuple, average_weights=False):
+    def simple_update_proj_loop(self, te_mpo: tuple, average_weights=False, sort_weights=False):
         r'''
         simple update
         average on 4 loops
@@ -239,6 +239,9 @@ class FermiSquareTPS(object):
         ----------
         time_evo: GTensor, time evolution operator
         average_weights: bool, if averge the weight tensors on a square loop or not
+        sort_weights: bool, 
+            True: combine even and odd singular values together and sort then truncate
+            False: truncation even and odd singular values seperately
         '''
 
         def _site_envs(site, ex_bonds: tuple):
@@ -277,14 +280,18 @@ class FermiSquareTPS(object):
 
             # absorb envs into GTensors
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
+            # set two kinds of cut-off
+            if sort_weights:
+                cf = sum(gts[0].shape[2])
+            else:
+                cf = gts[0].shape[2][0], gts[0].shape[2][1]
             # time evo operation
             gts[0] = tp.gcontract('ECe,abcde->abCcdE', te_mpo[0], gts[0])
             gts[1] = tp.gcontract('AEe,abcde->AabcdE', te_mpo[1], gts[1])
-
+            # QR and LQ factorizations
             q, r = tp.linalg.gtqr(gts[0], group_dims=((0, 1, 4, 5), (2, 3)), qr_dims=(2, 0))
             q, l = tp.linalg.super_gtqr(gts[1], group_dims=((2, 3, 4, 5), (0, 1)), qr_dims=(0, 2))
             rl = tp.gcontract('abc,bcd->ad', r, l)
-            cf = gts[0].shape[0][0], gts[0].shape[0][1]
             u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
             # only left-conjugation of U and right-conjugation of V are valid under truncation
             u_dagger = u.graded_conj(iso_dims=(1,), side=0)
@@ -330,13 +337,18 @@ class FermiSquareTPS(object):
             envs_inv.append(temp)
 
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
+            # set two kinds of cut-off
+            if sort_weights:
+                cf = sum(gts[0].shape[1])
+            else:
+                cf = gts[0].shape[1][0], gts[0].shape[1][1]
+            # time evo
             gts[0] = tp.gcontract('EBe,abcde->aBbcdE', te_mpo[0], gts[0])
             gts[1] = tp.gcontract('DEe,abcde->abcDdE', te_mpo[1], gts[1])
 
             q, r = tp.linalg.gtqr(gts[0], group_dims=((0, 3, 4, 5), (1, 2)), qr_dims=(1, 0))
             q, l = tp.linalg.super_gtqr(gts[1], group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
             rl = tp.gcontract('abc,bcd->ad', r, l)
-            cf = gts[0].shape[0][0], gts[0].shape[0][1]
             u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
             u_dagger = u.graded_conj(iso_dims=(1,), side=0)
             v_dagger = v.graded_conj(iso_dims=(0,), side=1)
