@@ -358,49 +358,34 @@ class FermiSquareTPS(object):
             if average_weights:
                 # average the weights on the loop
                 lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
-
-                # dominant and subordinative sectors
-                # flags = []
-                # True: the dominant sector is odd; otherwise, the dominant sector is even
-                weights = []
+                svalues = []
+                indices = []
                 for t in lams:
-                    e, o = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
-                    eo = torch.cat((e, o), dim=0)
-                    seo, indices = torch.sort(eo, descending=True, stable=True)
-                    weights.append(seo)
+                    se, so = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
+                    seo = torch.cat((se, so), dim=0)
+                    sorted_seo, idxs = torch.sort(seo, descending=True, stable=True)
+                    svalues.append(sorted_seo)
+                    indices.append(idxs)
 
-                # sd, ss = 0.25*sum(s_dom),  0.25*sum(s_sub)
-                # nor = sd.max()
-                ave = 0.25*sum(weights)
-                ave = ave/ave.max()
-                print('Loop averaged weight:', ave)
+                ave_seo = 0.25*sum(svalues)
+                print('Loop:', ave_seo)
 
-                '''
-                # even or odd sector as the dominant sector
-                blocks_e ={(0, 0): sd.diag(), (1, 1): ss.diag()}
-                blocks_o ={(0, 0): ss.diag(), (1, 1): sd.diag()}
-                se = GTensor(dual=(0, 1), blocks=blocks_e)
-                se = (1.0/se.max())*se
-                so = GTensor(dual=(0, 1), blocks=blocks_o)
-                so = (1.0/so.max())*so
+                # update
+                new_lams = []
+                for i, idxs in enumerate(indices):
+                    # revover the original order
+                    len_seo = len(ave_seo)
+                    seo = [None]*len_seo
+                    for l in range(len_seo):
+                        seo[idxs[l]] = ave_seo[l].item()
+                    # print(idxs, ave_seo, seo)
+                    divide = lams[i].shape[0][0]
+                    se, so = seo[:divide], seo[divide:]
+                    new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                    lam = GTensor(dual=lams[i].dual, shape=lams[i].shape, blocks=new_blocks, cflag=lams[i].cflag)
+                    new_lams.append(lam)
 
-                if flags[0]:
-                    self._link_tensors[c][0] = so
-                else:
-                    self._link_tensors[c][0] = se
-                if flags[1]:
-                    self._link_tensors[cx][1] = so
-                else:
-                    self._link_tensors[cx][1] = se
-                if flags[2]:
-                    self._link_tensors[cy][0] = so
-                else:
-                    self._link_tensors[cy][0] = se
-                if flags[3]:
-                    self._link_tensors[c][1] = so
-                else:
-                    self._link_tensors[c][1] = se
-                '''
+                self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple(new_lams)
 
         return 1
 
