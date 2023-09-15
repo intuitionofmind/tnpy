@@ -7,7 +7,7 @@ import pickle as pk
 
 import torch
 torch.set_default_dtype(torch.float64)
-# import torch.nn.functional as tnf
+import torch.nn.functional as tnf
 
 import tnpy as tp
 from tnpy import Z2gTensor, GTensor 
@@ -320,6 +320,7 @@ class FermiSquareTPS(object):
             # assert self._site_tensors[c].dual == gts[0].dual
             # assert self._site_tensors[cx].dual == gts[1].dual
             # assert self._link_tensors[c][0].dual == s.dual
+            # print(gts[0].shape, gts[1].shape)
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]

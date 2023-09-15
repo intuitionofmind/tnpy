@@ -23,6 +23,7 @@ def svd(mat, full_matrices=None):
 
 def tsvd(input_ten, group_dims: tuple, svd_dims=None, cut_off=None) -> tuple:
     r'''
+    tensor SVD
     SVD a tensor T to T = A S B
 
     Parameters

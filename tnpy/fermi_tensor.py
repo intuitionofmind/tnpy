@@ -55,7 +55,7 @@ class Z2gTensor(object):
         for k, v in self._blocks.items():
             assert parity == sum(k) & 1, 'quantum number is not consistent with the parity'
             block_shape = [self._shape[i][q] for i, q in enumerate(k)]
-            assert v.shape == tuple(block_shape), 'block shape is not consistent with the whole shape'
+            assert v.shape == tuple(block_shape), ('block shape %s is not consistent with the whole shape %s' % (v.shape, shape))
             if cflag:
                 self._blocks[k] = v.cdouble()
 
