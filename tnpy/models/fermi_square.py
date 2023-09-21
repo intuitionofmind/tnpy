@@ -67,6 +67,22 @@ class SquareTJ(object):
 
         return GTensor(dual, shape, blocks)
 
+    def onsite_sy(self) -> GTensor:
+        r'''
+        onsite Sx operator
+        '''
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*2)
+        temp = torch.zeros(block_shape).cdouble()
+        temp[1, 0] = 0.5j
+        temp[0, 1] = -0.5j
+        blocks[(1, 1)] = temp
+
+        return GTensor(dual, shape, blocks)
+
     def c_up(self) -> Z2gTensor:
 
         dual = (0, 1)
