@@ -431,25 +431,25 @@ class FermiSquareTPS(object):
                     se, so = 0.25*sum(sds), 0.25*sum(sms)
                 else:
                     se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
                 self._link_tensors[c][0] = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
                 if flags[1]:
                     se, so = 0.25*sum(sds), 0.25*sum(sms)
                 else:
                     se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
                 self._link_tensors[cx][1] = GTensor(dual=(0, 1), shape=lams[1].shape, blocks=new_blocks, cflag=lams[1].cflag)
                 if flags[2]:
                     se, so = 0.25*sum(sds), 0.25*sum(sms)
                 else:
                     se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
                 self._link_tensors[cy][0] = GTensor(dual=(0, 1), shape=lams[2].shape, blocks=new_blocks, cflag=lams[2].cflag)
                 if flags[3]:
                     se, so = 0.25*sum(sds), 0.25*sum(sms)
                 else:
                     se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
                 self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
 
         return 1
