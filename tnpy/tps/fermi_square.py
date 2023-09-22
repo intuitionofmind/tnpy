@@ -8,6 +8,7 @@ import pickle as pk
 import torch
 torch.set_default_dtype(torch.float64)
 import torch.nn.functional as tnf
+torch.set_printoptions(precision=8)
 
 import tnpy as tp
 from tnpy import Z2gTensor, GTensor 
@@ -236,7 +237,7 @@ class FermiSquareTPS(object):
 
         return mgts
 
-    def simple_update_proj_loop(self, te_mpo: tuple, average_weights=False, sort_weights=False):
+    def simple_update_proj_loop(self, te_mpo: tuple, average_weights=False, sort_weights=False, expand=None):
         r'''
         simple update
         average on 4 loops
@@ -248,6 +249,8 @@ class FermiSquareTPS(object):
         sort_weights: bool, 
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
+        expand: tuple[int], optional
+            expand to larger D
         '''
 
         def _site_envs(site, ex_bonds: tuple):
@@ -283,6 +286,8 @@ class FermiSquareTPS(object):
                 cf = sum(gts[0].shape[2])
             else:
                 cf = gts[0].shape[2][0], gts[0].shape[2][1]
+                if isinstance(expand, tuple):
+                    cf = expand
             # time evo operation
             gts[0] = tp.gcontract('ECe,abcde->abCcdE', te_mpo[0], gts[0])
             gts[1] = tp.gcontract('AEe,abcde->AabcdE', te_mpo[1], gts[1])
@@ -296,8 +301,8 @@ class FermiSquareTPS(object):
             v_dagger = v.graded_conj(iso_dims=(0,), side=1)
             s_inv = tp.linalg.ginv(s)
 
-            # check isometry of U and V
             '''
+            # check isometry of U and V
             iso = tp.gcontract('ab,bc->ac', u_dagger, u)
             print('Iso U:', iso.dual)
             for q, t in iso.blocks().items():
@@ -307,6 +312,14 @@ class FermiSquareTPS(object):
             for q, t in iso.blocks().items():
                 print(q, t.diag())
             '''
+
+            # check identity
+            # print('check identity:')
+            # print(l.shape, v_dagger.shape, s_inv.shape, u_dagger.shape, r.shape)
+            # idt = tp.gcontract('abc,cd,de,ef,fg,gh,hij->abij', l, v_dagger, s_inv, s, s_inv, u_dagger, r)
+            # for key, val in idt.blocks().items():
+                # print(key)
+                # print(val)
  
             # apply projectors
             gts[0] = tp.gcontract('abCcde,Ccf,fg,gh->abhde', gts[0], l, v_dagger, s_inv)
@@ -320,11 +333,11 @@ class FermiSquareTPS(object):
             # assert self._site_tensors[c].dual == gts[0].dual
             # assert self._site_tensors[cx].dual == gts[1].dual
             # assert self._link_tensors[c][0].dual == s.dual
-            # print(gts[0].shape, gts[1].shape)
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
             self._link_tensors[c][0] = (1.0/s.max())*s
+            # print('X', self._link_tensors[c][0].blocks()[(0, 0)].diag(), self._link_tensors[c][0].blocks()[(1, 1)].diag())
 
             # Y-direction
             gts = [self._site_tensors[c], self._site_tensors[cy]]
@@ -337,6 +350,8 @@ class FermiSquareTPS(object):
                 cf = sum(gts[0].shape[1])
             else:
                 cf = gts[0].shape[1][0], gts[0].shape[1][1]
+                if isinstance(expand, tuple):
+                    cf = expand
             # time evo
             gts[0] = tp.gcontract('EBe,abcde->aBbcdE', te_mpo[0], gts[0])
             gts[1] = tp.gcontract('DEe,abcde->abcDdE', te_mpo[1], gts[1])
@@ -348,6 +363,19 @@ class FermiSquareTPS(object):
             u_dagger = u.graded_conj(iso_dims=(1,), side=0)
             v_dagger = v.graded_conj(iso_dims=(0,), side=1)
             s_inv = tp.linalg.ginv(s)
+
+            '''
+            # check isometry of U and V
+            iso = tp.gcontract('ab,bc->ac', u_dagger, u)
+            print('Iso U:', iso.dual)
+            for q, t in iso.blocks().items():
+                print(q, t.diag())
+            iso = tp.gcontract('ab,bc->ac', v, v_dagger)
+            print('Iso V:', iso.dual)
+            for q, t in iso.blocks().items():
+                print(q, t.diag())
+            '''
+ 
             # apply projectors            
             gts[0] = tp.gcontract('aBbcde,Bbf,fg,gh->ahcde', gts[0], l, v_dagger, s_inv)
             gts[1] = tp.gcontract('hg,gf,fDd,abcDde->abche', s_inv, u_dagger, r, gts[1])
@@ -364,38 +392,65 @@ class FermiSquareTPS(object):
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cy] = (1.0/gts[1].max())*gts[1]
             self._link_tensors[c][1] = (1.0/s.max())*s
+            # print('Y', self._link_tensors[c][1].blocks()[(0, 0)].diag(), self._link_tensors[c][1].blocks()[(1, 1)].diag())
 
-            if average_weights:
-                # average the weights on the loop
+            if average_weights and (sort_weights is not True) and (expand is None):
+                '''
+                # direct averge two sectors, naively
                 lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
-                svalues = []
-                indices = []
+                ses, sos = [], []
+                for t in lams:
+                    ses.append(t.blocks()[(0, 0)].diag())
+                    sos.append(t.blocks()[(1, 1)].diag())
+
+                se, so = 0.25*sum(ses), 0.25*sum(sos)
+                print(se, so)
+                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
+                self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
+                '''
+                # average by dominant part
+                lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
+                sds, sms = [], []
+                flags = []
                 for t in lams:
                     se, so = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
-                    seo = torch.cat((se, so), dim=0)
-                    sorted_seo, idxs = torch.sort(seo, descending=True, stable=True)
-                    svalues.append(sorted_seo)
-                    indices.append(idxs)
+                    print(se, so)
+                    if se[0].item() > (1.0-1E-12):
+                        sds.append(se)
+                        sms.append(so)
+                        flags.append(True)
+                    elif so[0].item() > (1.0-1E-12):
+                        sds.append(so)
+                        sms.append(se)
+                        flags.append(False)
 
-                ave_seo = 0.25*sum(svalues)
-                print('Loop:', ave_seo)
-
-                # update
-                new_lams = []
-                for i, idxs in enumerate(indices):
-                    # revover the original order
-                    len_seo = len(ave_seo)
-                    seo = [None]*len_seo
-                    for l in range(len_seo):
-                        seo[idxs[l]] = ave_seo[l].item()
-                    # print(idxs, ave_seo, seo)
-                    divide = lams[i].shape[0][0]
-                    se, so = seo[:divide], seo[divide:]
-                    new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
-                    lam = GTensor(dual=lams[i].dual, shape=lams[i].shape, blocks=new_blocks, cflag=lams[i].cflag)
-                    new_lams.append(lam)
-
-                self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple(new_lams)
+                # print(flags)
+                print('Ave dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                if flags[0]:
+                    se, so = 0.25*sum(sds), 0.25*sum(sms)
+                else:
+                    se, so = 0.25*sum(sms), 0.25*sum(sds)
+                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                self._link_tensors[c][0] = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
+                if flags[1]:
+                    se, so = 0.25*sum(sds), 0.25*sum(sms)
+                else:
+                    se, so = 0.25*sum(sms), 0.25*sum(sds)
+                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                self._link_tensors[cx][1] = GTensor(dual=(0, 1), shape=lams[1].shape, blocks=new_blocks, cflag=lams[1].cflag)
+                if flags[2]:
+                    se, so = 0.25*sum(sds), 0.25*sum(sms)
+                else:
+                    se, so = 0.25*sum(sms), 0.25*sum(sds)
+                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                self._link_tensors[cy][0] = GTensor(dual=(0, 1), shape=lams[2].shape, blocks=new_blocks, cflag=lams[2].cflag)
+                if flags[3]:
+                    se, so = 0.25*sum(sds), 0.25*sum(sms)
+                else:
+                    se, so = 0.25*sum(sms), 0.25*sum(sds)
+                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
 
         return 1
 
