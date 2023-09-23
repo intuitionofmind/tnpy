@@ -237,7 +237,7 @@ class FermiSquareTPS(object):
 
         return mgts
 
-    def simple_update_proj_loop(self, te_mpo: tuple, average_weights=False, sort_weights=False, expand=None):
+    def simple_update_proj_loop(self, te_mpo: tuple, sort_weights=False, average_weights=None, expand=None):
         r'''
         simple update
         average on 4 loops
@@ -245,10 +245,12 @@ class FermiSquareTPS(object):
         Parameters
         ----------
         time_evo: GTensor, time evolution operator
-        average_weights: bool, if averge the weight tensors on a square loop or not
         sort_weights: bool, 
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
+        average_weights: string,
+            'dominant', average by the dominant sector
+            'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
         '''
@@ -394,63 +396,62 @@ class FermiSquareTPS(object):
             self._link_tensors[c][1] = (1.0/s.max())*s
             # print('Y', self._link_tensors[c][1].blocks()[(0, 0)].diag(), self._link_tensors[c][1].blocks()[(1, 1)].diag())
 
-            if average_weights and (sort_weights is not True) and (expand is None):
-                '''
-                # direct averge two sectors, naively
-                lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
-                ses, sos = [], []
-                for t in lams:
-                    ses.append(t.blocks()[(0, 0)].diag())
-                    sos.append(t.blocks()[(1, 1)].diag())
+            if expand is None and sort_weights is False:
+                if 'parity' == average_weights:
+                    # direct averge two sectors, naively
+                    lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
+                    ses, sos = [], []
+                    for t in lams:
+                        ses.append(t.blocks()[(0, 0)].diag())
+                        sos.append(t.blocks()[(1, 1)].diag())
+                    se, so = 0.25*sum(ses), 0.25*sum(sos)
+                    print('average parity:', se, so)
+                    new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
+                    new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
+                    self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-                se, so = 0.25*sum(ses), 0.25*sum(sos)
-                print(se, so)
-                new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
-                new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
-                self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
-                '''
-                # average by dominant part
-                lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
-                sds, sms = [], []
-                flags = []
-                for t in lams:
-                    se, so = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
-                    print(se, so)
-                    if se[0].item() > (1.0-1E-12):
-                        sds.append(se)
-                        sms.append(so)
-                        flags.append(True)
-                    elif so[0].item() > (1.0-1E-12):
-                        sds.append(so)
-                        sms.append(se)
-                        flags.append(False)
+                if 'dominant' == average_weights:
+                    # average by dominant part
+                    lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
+                    sds, sms = [], []
+                    flags = []
+                    for t in lams:
+                        se, so = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
+                        print(se, so)
+                        if se[0].item() > (1.0-1E-12):
+                            sds.append(se)
+                            sms.append(so)
+                            flags.append(True)
+                        elif so[0].item() > (1.0-1E-12):
+                            sds.append(so)
+                            sms.append(se)
+                            flags.append(False)
 
-                # print(flags)
-                print('Ave dominant:', 0.25*sum(sds), 0.25*sum(sms))
-                if flags[0]:
-                    se, so = 0.25*sum(sds), 0.25*sum(sms)
-                else:
-                    se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-                self._link_tensors[c][0] = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
-                if flags[1]:
-                    se, so = 0.25*sum(sds), 0.25*sum(sms)
-                else:
-                    se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-                self._link_tensors[cx][1] = GTensor(dual=(0, 1), shape=lams[1].shape, blocks=new_blocks, cflag=lams[1].cflag)
-                if flags[2]:
-                    se, so = 0.25*sum(sds), 0.25*sum(sms)
-                else:
-                    se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-                self._link_tensors[cy][0] = GTensor(dual=(0, 1), shape=lams[2].shape, blocks=new_blocks, cflag=lams[2].cflag)
-                if flags[3]:
-                    se, so = 0.25*sum(sds), 0.25*sum(sms)
-                else:
-                    se, so = 0.25*sum(sms), 0.25*sum(sds)
-                new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-                self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
+                    print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                    if flags[0]:
+                        se, so = 0.25*sum(sds), 0.25*sum(sms)
+                    else:
+                        se, so = 0.25*sum(sms), 0.25*sum(sds)
+                    new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
+                    self._link_tensors[c][0] = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
+                    if flags[1]:
+                        se, so = 0.25*sum(sds), 0.25*sum(sms)
+                    else:
+                        se, so = 0.25*sum(sms), 0.25*sum(sds)
+                    new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
+                    self._link_tensors[cx][1] = GTensor(dual=(0, 1), shape=lams[1].shape, blocks=new_blocks, cflag=lams[1].cflag)
+                    if flags[2]:
+                        se, so = 0.25*sum(sds), 0.25*sum(sms)
+                    else:
+                        se, so = 0.25*sum(sms), 0.25*sum(sds)
+                    new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
+                    self._link_tensors[cy][0] = GTensor(dual=(0, 1), shape=lams[2].shape, blocks=new_blocks, cflag=lams[2].cflag)
+                    if flags[3]:
+                        se, so = 0.25*sum(sds), 0.25*sum(sms)
+                    else:
+                        se, so = 0.25*sum(sms), 0.25*sum(sds)
+                    new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
+                    self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
 
         return 1
 
