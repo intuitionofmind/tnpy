@@ -171,6 +171,9 @@ class FermiSquareTPS(object):
     def coords(self):
         return self._coords
 
+    def tensors(self):
+        return self._site_tensors, self._link_tensors
+
     def site_tensors(self) -> list:
         return list(self._site_tensors.values())
 
@@ -427,6 +430,9 @@ class FermiSquareTPS(object):
                             sms.append(se)
                             flags.append(False)
 
+                    # flags = [True, False, True, False]
+                    # flags = [False, True, False, True]
+                    # print(flags)
                     print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
                     if flags[0]:
                         se, so = 0.25*sum(sds), 0.25*sum(sms)
@@ -452,6 +458,10 @@ class FermiSquareTPS(object):
                         se, so = 0.25*sum(sms), 0.25*sum(sds)
                     new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
                     self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
+
+        return 1
+    
+    def twobody_cluster_update(self, te_mpo: tuple, sort_weights=False, average_weights=None):
 
         return 1
 
