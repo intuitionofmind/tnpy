@@ -14,10 +14,14 @@ class SquareTJ(object):
     t-J model on a square lattice
     '''
 
-    def __init__(self, t: float, J: float, mu: float):
+    def __init__(self, t: float, J: float, mu: float, schwinger_boson=False):
+        r'''
+        schwinger_boson: bool, if use the Schwinger boson representation
+        '''
 
         self._dim_phys = 2
         self._t, self._J, self._mu = t, J, mu
+        self._schwinger_boson = schwinger_boson
 
     def onsite_n(self) -> GTensor:
         r'''
@@ -31,7 +35,11 @@ class SquareTJ(object):
         temp = torch.zeros(block_shape)
         temp[0, 0] = 1.0
         temp[1, 1] = 1.0
-        blocks[(1, 1)] = temp
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return GTensor(dual, shape, blocks)
 
@@ -47,7 +55,11 @@ class SquareTJ(object):
         temp = torch.zeros(block_shape)
         temp[0, 0] = 0.5
         temp[1, 1] = -0.5
-        blocks[(1, 1)] = temp
+        
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return GTensor(dual, shape, blocks)
 
@@ -63,7 +75,11 @@ class SquareTJ(object):
         temp = torch.zeros(block_shape)
         temp[1, 0] = 0.5
         temp[0, 1] = 0.5
-        blocks[(1, 1)] = temp
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return GTensor(dual, shape, blocks)
 
@@ -76,10 +92,14 @@ class SquareTJ(object):
         shape = tuple([(self._dim_phys, self._dim_phys)]*2)
         blocks = {}
         block_shape = tuple([self._dim_phys]*2)
-        temp = torch.zeros(block_shape).cdouble()
-        temp[1, 0] = 0.5j
-        temp[0, 1] = -0.5j
-        blocks[(1, 1)] = temp
+        temp = torch.zeros(block_shape)
+        temp[1, 0] = 0.5
+        temp[0, 1] = -0.5
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return GTensor(dual, shape, blocks)
 
@@ -90,7 +110,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[0, 0] = 1.0
-        blocks[(0, 1)] = temp
+
+        qns = [0, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -101,7 +125,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[0, 0] = 1.0
-        blocks[(1, 0)] = temp
+
+        qns = [1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -112,7 +140,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[0, 1] = 1.0
-        blocks[(0, 1)] = temp
+
+        qns = [0, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -123,7 +155,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[1, 0] = 1.0
-        blocks[(1, 0)] = temp
+
+        qns = [1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -134,7 +170,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[1, 0] = 1.0
-        blocks[(1, 1)] = temp
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -145,7 +185,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[0, 1] = 1.0
-        blocks[(1, 1)] = temp
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -156,7 +200,11 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[0, 0] = 1.0
-        blocks[(1, 1)] = temp
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
@@ -167,18 +215,17 @@ class SquareTJ(object):
         blocks = {}
         temp = torch.zeros(tuple([self._dim_phys]*2))
         temp[1, 1] = 1.0
-        blocks[(1, 1)] = temp
+
+        qns = [1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = temp
 
         return Z2gTensor(dual, shape, blocks)
 
     def onebody_id(self) -> Z2gTensor:
         r'''
-        time evolution by Talyor expansion
-
-        Parameters
-        ----------
-        delta: float, time evolution step size
-        order: int, how many Taylor orders you want
+        identity closure condition
         '''
 
         # build the identity operator
@@ -189,7 +236,12 @@ class SquareTJ(object):
         temp = torch.zeros(block_shape)
         bare = torch.zeros(block_shape)
         blocks = {}
-        id_states = (0, 0), (0, 1), (1, 1)
+
+        if self._schwinger_boson:
+            id_states = (0, 1), (0, 0), (1, 0)
+        else:
+            id_states = (0, 0), (0, 1), (1, 1)
+
         for l, n in id_states:
             temp.zero_()
             temp[l, l] = 1.0
@@ -225,12 +277,18 @@ class SquareTJ(object):
         # hopping t-terms
         temp[0, 0, 0, 0] = 1.0 
         temp[1, 0, 0, 1] = 1.0
-        blocks[(1, 0, 0, 1)] = blocks.get((1, 0, 0, 1), bare)+(-1.0*self._t*temp)
+        qns = [1, 0, 0, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
         # complex conjugate
         temp.zero_()
         temp[0, 0, 0, 0] = -1.0
         temp[0, 1, 1, 0] = -1.0
-        blocks[(0, 1, 1, 0)] = blocks.get((0, 1, 1, 0), bare)+(-1.0*self._t*temp)
+        qns = [0, 1, 1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
 
         # chemical potential
         # there is a minus sign by default
@@ -287,30 +345,6 @@ class SquareTJ(object):
         return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
 
     def twobody_hopping(self) -> GTensor:
-        # in the first place
-        # build H_{i'ij'j}^{n_{i'}n_{i}n_{j'}n_{j}}
-        # pay attention to the natural tensor product order
-        dual = (0, 1, 0, 1)
-        blocks = {}
-        block_shape = tuple([self._dim_phys]*4)
-
-        bare = torch.zeros(block_shape)
-        temp = torch.zeros(block_shape)
-
-        # hopping t-terms
-        temp.zero_()
-        temp[0, 0, 0, 0] = 1.0 
-        temp[1, 0, 0, 1] = 1.0
-        blocks[(1, 0, 0, 1)] = blocks.get((1, 0, 0, 1), bare)+(-1.0*self._t*temp)
-        # complex conjugate
-        temp.zero_()
-        temp[0, 0, 0, 0] = -1.0
-        temp[0, 1, 1, 0] = -1.0
-        blocks[(0, 1, 1, 0)] = blocks.get((0, 1, 1, 0), bare)+(-1.0*self._t*temp)
-
-        return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
-
-    def twobody_sc(self) -> GTensor:
 
         dual = (0, 1, 0, 1)
         shape = tuple([(self._dim_phys, self._dim_phys)]*4)
@@ -320,13 +354,25 @@ class SquareTJ(object):
         bare = torch.zeros(block_shape)
         temp = torch.zeros(block_shape)
 
-        temp.zero_()
+        # hopping t-terms
         temp[0, 0, 0, 0] = 1.0 
-        temp[0, 1, 0, 1] = 1.0
-        blocks[(0, 1, 0, 1)] = blocks.get((0, 1, 0, 1), bare)+temp
+        temp[1, 0, 0, 1] = 1.0
+        qns = [1, 0, 0, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+        # complex conjugate
+        temp.zero_()
+        temp[0, 0, 0, 0] = -1.0
+        temp[0, 1, 1, 0] = -1.0
+        qns = [0, 1, 1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
 
         return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
 
+    '''
     def twobody_heisenberg(self) -> GTensor:
         # in the first place
         # build H_{i'ij'j}^{n_{i'}n_{i}n_{j'}n_{j}}
@@ -352,6 +398,7 @@ class SquareTJ(object):
         # return tp.gpermute(GTensor(dual, blocks), (0, 2, 1, 3))
 
         return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
+    '''
 
     def twobody_ham(self, cflag=False) -> GTensor:
         r'''
@@ -382,12 +429,18 @@ class SquareTJ(object):
         # hopping t-terms
         temp[0, 0, 0, 0] = 1.0 
         temp[1, 0, 0, 1] = 1.0
-        blocks[(1, 0, 0, 1)] = blocks.get((1, 0, 0, 1), bare)+(-1.0*self._t*temp)
+        qns = [1, 0, 0, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
         # complex conjugate
         temp.zero_()
         temp[0, 0, 0, 0] = -1.0
         temp[0, 1, 1, 0] = -1.0
-        blocks[(0, 1, 1, 0)] = blocks.get((0, 1, 1, 0), bare)+(-1.0*self._t*temp)
+        qns = [0, 1, 1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
 
         # Heisenberg J-terms
         temp.zero_()
@@ -397,12 +450,18 @@ class SquareTJ(object):
         # diagonal
         temp[1, 1, 0, 0] = -0.5
         temp[0, 0, 1, 1] = -0.5
-        blocks[(1, 1, 1, 1)] = blocks.get((1, 1, 1, 1), bare)+(self._J*temp)
+        qns = [1, 1, 1, 1]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(self._J*temp)
 
         # chemical potential
         # there is a minus sign by default
         # double occupied state should be projected out: | e_{k}^{n} >, k=1, n=0
-        id_states = (0, 0), (0, 1), (1, 1)
+        if self._schwinger_boson:
+            id_states = (0, 1), (0, 0), (1, 0)
+        else:
+            id_states = (0, 0), (0, 1), (1, 1)
         # n_{i} \otimes 1
         for k, n in id_states:
             temp.zero_()
@@ -436,7 +495,10 @@ class SquareTJ(object):
         temp = torch.zeros(block_shape)
         bare = torch.zeros(block_shape)
         blocks = {}
-        id_states = (0, 0), (0, 1), (1, 1)
+        if self._schwinger_boson:
+            id_states = (0, 1), (0, 0), (1, 0)
+        else:
+            id_states = (0, 0), (0, 1), (1, 1)
         # k, m: the first
         # l, n: the second
         for k, m in id_states:
