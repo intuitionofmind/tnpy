@@ -458,22 +458,25 @@ class SquareTJ(object):
         # chemical potential
         # there is a minus sign by default
         # double occupied state should be projected out: | e_{k}^{n} >, k=1, n=0
-        if self._schwinger_boson:
-            id_states = (0, 1), (0, 0), (1, 0)
-        else:
-            id_states = (0, 0), (0, 1), (1, 1)
+        id_states = (0, 0), (0, 1), (1, 1)
         # n_{i} \otimes 1
         for k, n in id_states:
             temp.zero_()
             temp[0, 0, k, k] = 0.25
             temp[1, 1, k, k] = 0.25
-            blocks[(1, 1, n, n)] = blocks.get((1, 1, n, n), bare)+(-1.0*self._mu*temp)
+            qns = [1, 1, n, n]
+            if self._schwinger_boson:
+                qns = [q ^ 1 for q in qns]
+            blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._mu*temp)
         # 1 \otimes n_{j}
         for k, n in id_states:
             temp.zero_()
             temp[k, k, 0, 0] = 0.25
             temp[k, k, 1, 1] = 0.25
-            blocks[(n, n, 1, 1)] = blocks.get((n, n, 1, 1), bare)+(-1.0*self._mu*temp)
+            qns = [n, n, 1, 1]
+            if self._schwinger_boson:
+                qns = [q ^ 1 for q in qns]
+            blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._mu*temp)
 
         return GTensor(dual, shape, blocks, cflag).permute((0, 2, 1, 3))
 
@@ -495,17 +498,17 @@ class SquareTJ(object):
         temp = torch.zeros(block_shape)
         bare = torch.zeros(block_shape)
         blocks = {}
-        if self._schwinger_boson:
-            id_states = (0, 1), (0, 0), (1, 0)
-        else:
-            id_states = (0, 0), (0, 1), (1, 1)
+        id_states = (0, 0), (0, 1), (1, 1)
         # k, m: the first
         # l, n: the second
         for k, m in id_states:
             for l, n in id_states:
                 temp.zero_()
                 temp[k, k, l, l] = 1.0
-                blocks[(m, m, n, n)] = blocks.get((m, m, n, n), bare)+temp
+                qns = [m, m, n, n]
+                if self._schwinger_boson:
+                    qns = [q ^ 1 for q in qns]
+                blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+temp
 
         id_gt = GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
         # powers of operators
