@@ -221,6 +221,19 @@ class FermiSquareTPS(object):
 
         return GTensor(dual=env.dual, shape=env.shape, blocks=new_blocks, cflag=cflag)
 
+    def mixed_site_envs(self, site, ex_bonds: tuple):
+        r'''
+        return the environment bond weights around a site if it is an external one
+        otherwise, return its square root
+        '''
+
+        envs = self.site_envs(site)
+        for j in range(4):
+            if j not in ex_bonds:
+                envs[j] = self.sqrt_env(envs[j])
+
+        return envs
+
     def merged_tensors(self) -> dict:
         r'''
         build the tensors merged with square root of the environments
@@ -273,7 +286,6 @@ class FermiSquareTPS(object):
         # ss = GTensor(dual=s.dual, shape=s.shape, blocks={(0, 0):se, (1, 1):so}, cflag=s.cflag)
         # te_mpo = tp.gcontract('abc,bd->adc', u, ss), tp.gcontract('ab,bcd->acd', ss, v)
 
-        # se, so = [], []
         for c in self._coords:
             cx = (c[0]+1) % self._nx, c[1]
             cy = c[0], (c[1]+1) % self._ny
@@ -460,10 +472,36 @@ class FermiSquareTPS(object):
                     self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
 
         return 1
-    
-    def twobody_cluster_update(self, te_mpo: tuple, sort_weights=False, average_weights=None):
+
+    def twobody_cluster_update(self, te_mpo: tuple, sort_weights=False, average_weights=None, expand=None):
+        r'''
+        simple update
+        average on 4 loops
+
+        Parameters
+        ----------
+        time_evo: GTensor, time evolution operator
+        sort_weights: bool, 
+            True: combine even and odd singular values together and sort then truncate
+            False: truncation even and odd singular values seperately
+        average_weights: string,
+            'dominant', average by the dominant sector
+            'parity', average by parity sectors
+        expand: tuple[int], optional
+            expand to larger D
+        '''
+
+        def _site_envs(site, ex_bonds: tuple):
+
+            envs = self.site_envs(site)
+            for j in range(4):
+                if j not in ex_bonds:
+                    envs[j] = self.sqrt_env(envs[j])
+
+            return envs
 
         return 1
+
 
     def dt_measure_AB_onebody(self, op: GTensor):
         r'''
