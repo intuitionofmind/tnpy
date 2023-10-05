@@ -271,15 +271,6 @@ class FermiSquareTPS(object):
             expand to larger D
         '''
 
-        def _site_envs(site, ex_bonds: tuple):
-
-            envs = self.site_envs(site)
-            for j in range(4):
-                if j not in ex_bonds:
-                    envs[j] = self.sqrt_env(envs[j])
-
-            return envs
-
         # factorize to MPO
         # u, s, v = tp.linalg.gtsvd(time_evo, group_dims=((0, 2), (1, 3)), svd_dims=(1, 0))
         # se, so = s.blocks()[(0, 0)].sqrt(), s.blocks()[(1, 1)].sqrt()
@@ -293,7 +284,7 @@ class FermiSquareTPS(object):
 
             # X-direction
             gts = [self._site_tensors[c], self._site_tensors[cx]]
-            envs = [_site_envs(c, ex_bonds=(0, 1, 3)), _site_envs(cx, ex_bonds=(1, 2, 3))]
+            envs = [self.mixed_site_envs(c, ex_bonds=(0, 1, 3)), self.mixed_site_envs(cx, ex_bonds=(1, 2, 3))]
             # inverse of envs, for removing the envs later
             envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
             # absorb envs into GTensors
@@ -358,7 +349,7 @@ class FermiSquareTPS(object):
 
             # Y-direction
             gts = [self._site_tensors[c], self._site_tensors[cy]]
-            envs = [_site_envs(c, ex_bonds=(0, 2, 3)), _site_envs(cy, ex_bonds=(0, 1, 2))]
+            envs = [self.mixed_site_envs(c, ex_bonds=(0, 2, 3)), self.mixed_site_envs(cy, ex_bonds=(0, 1, 2))]
             envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
             # absorb envs into GTensors
             gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
@@ -491,16 +482,33 @@ class FermiSquareTPS(object):
             expand to larger D
         '''
 
-        def _site_envs(site, ex_bonds: tuple):
+        # external bonds for the cluster
+        external_bonds = (0, 3), (2, 3), (0, 1), (1, 2)
 
-            envs = self.site_envs(site)
-            for j in range(4):
-                if j not in ex_bonds:
-                    envs[j] = self.sqrt_env(envs[j])
+        for c in self._coords:
+            cx = (c[0]+1) % self._nx, c[1]
+            cy = c[0], (c[1]+1) % self._ny
+            cxy = (c[0]+1) % self._nx, (c[1]+1) % self._ny
 
-            return envs
-
-        return 1
+            # X-direction
+            cluster = [c, cx, cy, cxy]
+            envs = [self.mixed_site_envs(site, ex_bonds=external_bonds[i]) for i, site in enumerate(cluster)]
+            envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
+            # absorb envs into GTensors
+            gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
+            # set two kinds of cut-off
+            if sort_weights:
+                cf = sum(gts[0].shape[2])
+            else:
+                cf = gts[0].shape[2][0], gts[0].shape[2][1]
+                if isinstance(expand, tuple):
+                    cf = expand
+            # time evo operation
+            gts[0] = tp.gcontract('ECe,abcde->abCcdE', te_mpo[0], gts[0])
+            gts[1] = tp.gcontract('AEe,abcde->AabcdE', te_mpo[1], gts[1])
+            # place identity on the connected bonds
+            envs_inv[0][2] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            envs_inv[1][0] = GTensor.eye(dual=(0, 1), shape=s.shape)
 
 
     def dt_measure_AB_onebody(self, op: GTensor):
