@@ -571,8 +571,8 @@ class GTensor(Z2gTensor):
             raise ValueError('input dual is not valid')
 
         blocks = {}
-        blocks[(0, 0)] = torch.rand(shape[0][0]).diag()
-        blocks[(1, 1)] = sgn*torch.rand(shape[0][1]).diag()
+        blocks[(0, 0)] = torch.sort(torch.rand(shape[0][0]), descending=True).values.diag()
+        blocks[(1, 1)] = sgn*torch.sort(torch.rand(shape[0][1]), descending=True).values.diag()
 
         return cls(dual, shape, blocks, cflag, info)
 
@@ -872,6 +872,37 @@ class GTensor(Z2gTensor):
         blocks_o = cls.restore_blocks(mats[1], qns[1], shape, group_dims)
         blocks = dict(blocks_e)
         blocks.update(blocks_o)
+
+        return cls(dual, shape, blocks, cflag, info)
+
+    @classmethod
+    def extract_blocks(cls, dt, dual: tuple, shape: tuple, cflag=False, info=None):
+        r'''
+        build a GTensor from dense tensor
+        
+        Parameters
+        ----------
+        dt: tensor
+        '''
+
+        whole_shape = tuple([sum(d) for d in shape])
+        assert tuple(dt.shape) == whole_shape, 'shape NOT consistent with the input dense tensor'
+
+        qns_list = [(0, 1)]*len(dual)
+        qns = tuple(itertools.product(*qns_list))
+        blocks = {}
+        for q in qns:
+            # the structure tensor condition
+            # Z2 parity conserved
+            if 0 == sum(q) & 1:
+                ss = []
+                for i, p in enumerate(q):
+                    if 0 == p:
+                        ss.append(slice(0, shape[i][0]))
+                    elif 1 == p:
+                        ss.append(slice(shape[i][0], sum(shape[i])))
+
+                blocks[q] = dt[ss]
 
         return cls(dual, shape, blocks, cflag, info)
 
