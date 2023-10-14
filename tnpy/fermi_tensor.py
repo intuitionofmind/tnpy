@@ -882,7 +882,9 @@ class GTensor(Z2gTensor):
         
         Parameters
         ----------
-        dt: tensor
+        dt: torch.tensor
+        dual: tuple[int], dual of the desired GTensor
+        shape: tuple[tuple], shape of the desired GTensor
         '''
 
         whole_shape = tuple([sum(d) for d in shape])
@@ -902,7 +904,7 @@ class GTensor(Z2gTensor):
                     elif 1 == p:
                         ss.append(slice(shape[i][0], sum(shape[i])))
 
-                blocks[q] = dt[ss]
+                blocks[q] = dt[tuple(ss)]
 
         return cls(dual, shape, blocks, cflag, info)
 
