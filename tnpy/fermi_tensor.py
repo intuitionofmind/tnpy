@@ -380,6 +380,7 @@ class Z2gTensor(object):
                 block = oe.contract(oe_str, *block_tensors, backend='torch')
                 assert bare.shape == block.shape, 'shape of contracted block not correct'
                 new_blocks[new_qs] = new_blocks.get(new_qs, bare)+c_sign*p_sign*block
+                # new_blocks[new_qs] = new_blocks.get(new_qs, bare)+block
                 # print(oe_str, [t.shape for t in block_tensors], block.shape)
 
         if 0 == len(new_dual):
@@ -576,6 +577,38 @@ class GTensor(Z2gTensor):
 
         return cls(dual, shape, blocks, cflag, info)
 
+    def conj(self, free_dims=()):
+        r'''
+        conjugation of GTensor
+
+        Parameters
+        ----------
+        free_dims: tuple[int], free bonds not to be conjugated
+        '''
+
+        # if free_dims is None:
+            # free_dims = ()
+
+        # reverse
+        dims = [i for i in range(self._ndim)]
+        dims.reverse()
+        new_dual = [d ^ 1 for d in self._dual]
+        new_dual.reverse()
+        new_shape = list(self._shape)
+        new_shape.reverse()
+        # build new blocks
+        new_blocks = {}
+        for q, t in self._blocks.items():
+            # possible super trace sign should be considered
+            sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i not in free_dims]
+            sign = (-1)**sum(sgns)
+            new_q = list(q)
+            new_q.reverse()
+            new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
+
+        # permute back to the original order
+        return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
+
     def graded_conj(self, iso_dims: tuple, side: int, super_flag=False):
         r'''
         graded conjugation of GTensor
@@ -611,8 +644,8 @@ class GTensor(Z2gTensor):
             new_q.reverse()
             new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
 
-        if super_flag:
-            pass
+        # if super_flag:
+            # pass
 
         return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, info=self.info)
 
