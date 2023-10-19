@@ -577,7 +577,7 @@ class GTensor(Z2gTensor):
 
         return cls(dual, shape, blocks, cflag, info)
 
-    def conj(self, free_dims=()):
+    def conj(self, free_dims=(), side=0, reverse=False):
         r'''
         conjugation of GTensor
 
@@ -585,9 +585,6 @@ class GTensor(Z2gTensor):
         ----------
         free_dims: tuple[int], free bonds not to be conjugated
         '''
-
-        # if free_dims is None:
-            # free_dims = ()
 
         # reverse
         dims = [i for i in range(self._ndim)]
@@ -601,13 +598,22 @@ class GTensor(Z2gTensor):
         for q, t in self._blocks.items():
             # possible super trace sign should be considered
             sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i not in free_dims]
+            '''
+            if 1 == side:
+                sgns = [q[i]*(self._dual[i] ^ 1) for i in range(self._ndim) if i not in free_dims]
+            elif 0 == side:
+                sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i not in free_dims]
+            '''
             sign = (-1)**sum(sgns)
             new_q = list(q)
             new_q.reverse()
             new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
 
         # permute back to the original order
-        return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
+        if reverse:
+            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks)
+        else:
+            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
 
     def graded_conj(self, iso_dims: tuple, side: int, super_flag=False):
         r'''
@@ -619,14 +625,13 @@ class GTensor(Z2gTensor):
         side: int, 0 (left) or 1 (right) conjugation
         '''
 
+        # reverse
         dims = list(range(self._ndim))
         dims.reverse()
-
         new_dual = [d ^ 1 for d in self._dual]
         new_dual.reverse()
         new_shape = list(self._shape)
         new_shape.reverse()
-
         # build new blocks
         new_blocks = {}
         for q, t in self._blocks.items():
