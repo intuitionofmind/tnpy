@@ -577,13 +577,15 @@ class GTensor(Z2gTensor):
 
         return cls(dual, shape, blocks, cflag, info)
 
-    def conj(self, free_dims=(), side=0, reverse=False):
+    def graded_conj(self, free_dims=(), side=0, reverse=False):
         r'''
         conjugation of GTensor
 
         Parameters
         ----------
         free_dims: tuple[int], free bonds not to be conjugated
+        side: int, 0 or 1, namely the dagger on the left or right
+        reverse: bool, if all the bonds are reversed or not
         '''
 
         # reverse
@@ -597,62 +599,59 @@ class GTensor(Z2gTensor):
         new_blocks = {}
         for q, t in self._blocks.items():
             # possible super trace sign should be considered
-            sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i not in free_dims]
-            '''
             if 1 == side:
                 sgns = [q[i]*(self._dual[i] ^ 1) for i in range(self._ndim) if i not in free_dims]
             elif 0 == side:
                 sgns = [q[i]*self._dual[i] for i in range(self._ndim) if i not in free_dims]
-            '''
             sign = (-1)**sum(sgns)
             new_q = list(q)
             new_q.reverse()
             new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
 
-        # permute back to the original order
+        # permute back to the original order if needed
         if reverse:
             return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks)
         else:
             return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
 
-    def graded_conj(self, iso_dims: tuple, side: int, super_flag=False):
-        r'''
-        graded conjugation of GTensor
+    # def graded_conj(self, iso_dims: tuple, side: int, super_flag=False):
+    #     r'''
+    #     graded conjugation of GTensor
 
-        Parameters
-        ----------
-        iso_dims: tuple[int], uncontracted free bonds
-        side: int, 0 (left) or 1 (right) conjugation
-        '''
+    #     Parameters
+    #     ----------
+    #     iso_dims: tuple[int], uncontracted free bonds
+    #     side: int, 0 (left) or 1 (right) conjugation
+    #     '''
 
-        # reverse
-        dims = list(range(self._ndim))
-        dims.reverse()
-        new_dual = [d ^ 1 for d in self._dual]
-        new_dual.reverse()
-        new_shape = list(self._shape)
-        new_shape.reverse()
-        # build new blocks
-        new_blocks = {}
-        for q, t in self._blocks.items():
-            # possible super trace sign should be considered
-            sgns = []
-            for i in range(self._ndim):
-                # contracted bonds
-                if i not in iso_dims:
-                    sgns.append(q[i]*(self._dual[i] ^ side))
-                # uncontracted free bonds
-                else:
-                    sgns.append(q[i]*(self._dual[i] ^ (side ^ 1)))
-            sign = (-1)**sum(sgns)
-            new_q = list(q)
-            new_q.reverse()
-            new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
+    #     # reverse
+    #     dims = list(range(self._ndim))
+    #     dims.reverse()
+    #     new_dual = [d ^ 1 for d in self._dual]
+    #     new_dual.reverse()
+    #     new_shape = list(self._shape)
+    #     new_shape.reverse()
+    #     # build new blocks
+    #     new_blocks = {}
+    #     for q, t in self._blocks.items():
+    #         # possible super trace sign should be considered
+    #         sgns = []
+    #         for i in range(self._ndim):
+    #             # contracted bonds
+    #             if i not in iso_dims:
+    #                 sgns.append(q[i]*(self._dual[i] ^ side))
+    #             # uncontracted free bonds
+    #             else:
+    #                 sgns.append(q[i]*(self._dual[i] ^ (side ^ 1)))
+    #         sign = (-1)**sum(sgns)
+    #         new_q = list(q)
+    #         new_q.reverse()
+    #         new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
 
-        # if super_flag:
-            # pass
+    #     # if super_flag:
+    #         # pass
 
-        return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, info=self.info)
+    #     return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, info=self.info)
 
     def permute(self, dims: tuple):
         r'''
