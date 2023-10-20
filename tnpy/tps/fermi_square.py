@@ -305,8 +305,11 @@ class FermiSquareTPS(object):
             rl = tp.gcontract('abc,bcd->ad', r, l)
             u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
             # only left-conjugation of U and right-conjugation of V are valid under truncation
-            u_dagger = u.graded_conj(iso_dims=(1,), side=0)
-            v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            # u_dagger = u.graded_conj(iso_dims=(1,), side=0)
+            # v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            u_dagger = u.graded_conj(free_dims=(1,), side=0, reverse=True)
+            v_dagger = v.graded_conj(free_dims=(0,), side=1, reverse=True)
+
             s_inv = tp.linalg.ginv(s)
 
             '''
@@ -368,8 +371,11 @@ class FermiSquareTPS(object):
             q, l = tp.linalg.super_gtqr(gts[1], group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
             rl = tp.gcontract('abc,bcd->ad', r, l)
             u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
-            u_dagger = u.graded_conj(iso_dims=(1,), side=0)
-            v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            # u_dagger = u.graded_conj(iso_dims=(1,), side=0)
+            # v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            u_dagger = u.graded_conj(free_dims=(1,), side=0, reverse=True)
+            v_dagger = v.graded_conj(free_dims=(0,), side=1, reverse=True)
+
             s_inv = tp.linalg.ginv(s)
 
             '''
@@ -991,41 +997,7 @@ class FermiSquareTPS(object):
         res: tensor, averaged values on each site
         '''
 
-        def _conj(gt, free_dims=None):
-
-            if free_dims is None:
-                free_dims = ()
-
-            rank = len(gt.dual)
-            dims = [i for i in range(rank)]
-            dims.reverse()
-
-            new_dual = [d ^ 1 for d in gt.dual]
-            # reverse
-            new_dual.reverse()
-            new_shape = list(gt.shape)
-            new_shape.reverse()
-            # build new blocks
-            new_blocks = {}
-            for q, t in gt.blocks().items():
-                # possible super trace sign should be considered
-                sgns = [q[i]*gt.dual[i] for i in range(rank) if i not in free_dims]
-                sign = (-1)**sum(sgns)
-                new_q = list(q)
-                new_q.reverse()
-                new_blocks[tuple(new_q)] = sign*t.conj().permute(dims)
-
-            # permute back to the original order
-            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
-
         merged_gts = self.merged_tensors()
-
-        # pure_dt_strs = 'abcde,aA,Bb,dD,ABCDe->cC', 'abcde,Bb,Cc,dD,ABCDe->aA'
-        # impure_dt_strs = 'abcde,aA,Bb,dD,eE,ABCDE->cC', 'abcde,Bb,Cc,dD,eE,ABCDE->aA'
-
-        # dict: {site: measured_value}
-        # measurements = dict.fromkeys(self._coords, 0.0)
-        # meas = {}
 
         gts, gts_dagger = {}, {}
         gts_envs = {}
@@ -1033,7 +1005,7 @@ class FermiSquareTPS(object):
         external_dims = (0, 3), (2, 3), (0, 1), (1, 2)
         for i, c in enumerate(self._coords):
             gts[c] = merged_gts[c]
-            gts_dagger[c] = _conj(gts[c], free_dims=internal_dims[i])
+            gts_dagger[c] = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
             # external bonds
             envs = self.site_envs(c)
             p, q = external_dims[i]
@@ -1059,6 +1031,118 @@ class FermiSquareTPS(object):
 
         res = [v for v in measurements.values()]
         return torch.tensor(res)
+
+    def bmps_left_canonical(self, mps: list):
+        r'''
+        left canonicalize a fermionic boundary MPS
+        canonicalized MPS is automatically normalized
+
+        Parameters
+        ----------
+        mps: list[GTensor], the fermionic MPS
+        '''
+
+        new_mps = []
+        temp = mps[0]
+        for i in range(1, len(mps)):
+            q, r = tp.linalg.gtqr(temp, group_dims=((0, 2, 3), (1,)), qr_dims=(1, 0))
+            new_mps.append(q)
+            temp = tp.gcontract('ab,bcde->acde', r, mps[i])
+
+        return new_mps
+
+    def bmps_right_canonical(self, mps: list):
+        r'''
+        right canonicalize a fermionic boundary MPS
+        '''
+
+        new_mps = []
+        temp = mps[-1]
+        for i in range(len(mps), 0, -1):
+            q, r = tp.linalg.gtqr(temp, group_dims=((0, 2, 3), (1,)), qr_dims=(1, 0))
+            new_mps.append(q)
+            temp = tp.gcontract('ab,bcde', r, mps[i])
+
+        return new_mps
+
+    def varitional_bmps(self, rho: int, init_mps=None, init_envs=None):
+        r'''
+        varitional boundary MPS method
+
+        Parameters
+        ----------
+        rho: int, bond dimension of the boundary MPS
+        init_mps: tuple[list], initial up- and down-MPS
+        init_envs: tuple[GTensor], left- and right-environments
+        '''
+
+        merged_gts = self.merged_tensors()
+
+        gts, gts_dagger = {}, {}
+        gts_envs = {}
+        internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
+        for i, c in enumerate(self._coords):
+            gts[c] = merged_gts[c]
+            gts_dagger[c] = gts[c].conj(free_dims=internal_dims[i])
+            p, q = external_dims[i]
+            gts_envs[c] = envs[p], envs[q]
+        # double tensor as MPO
+        mpo = []
+        for c in self._coords:
+            mpo.append(tp.gcontract('abcde,ABCDe->aAbBcCdD', gts_dagger[c], gts[c]))
+
+        mps_dual = (0, 1, 1, 0)
+        virtual_shape = (rho // 2, rho // 2)
+
+        # TODO: initial MPS build from bond matrices
+        # initial fixed points for up and down MPS
+        if init_mps is None:
+            mps_u = []
+            mps_u.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[2].shape[2], mpo[2].shape[3]), cflag=True))
+            mps_u.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[3].shape[2], mpo[3].shape[3]), cflag=True))
+            mps_d = []
+            mps_d.append(torch.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[0].shape[6], mpo[0].shape[7]), cflag=True))
+            mps_d.append(torch.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[1].shape[6], mpo[1].shape[7]), cflag=True))
+
+
+    def dt_measure_onebody_vbmps(self, op: GTensor):
+        r'''
+        measure 1-body operator by double tensors
+
+        Parameters
+        ----------
+        op: GTensor, the one-body operator
+
+        Returns
+        -------
+        res: tensor, averaged values on each site
+        '''
+
+        merged_gts = self.merged_tensors()
+
+        gts, gts_dagger = {}, {}
+        internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
+        external_dims = (0, 3), (2, 3), (0, 1), (1, 2)
+        for i, c in enumerate(self._coords):
+            gts[c] = merged_gts[c]
+            gts_dagger[c] = _conj(gts[c], free_dims=internal_dims[i])
+
+        pure_dts, impure_dts = {}, {}
+        for i, c in enumerate(self._coords):
+            pure_dts[c] = tp.gcontract('abcde,ABCDe->aAbBcCdD', gts_dagger[c], gts[c])
+            impure_dts[c] = tp.gcontract('abcde,eE,ABCDE->aAbBcCdD', gts_dagger[c], op, gts[c])
+
+        measurements = {}
+        for i, c in enumerate(self._coords):
+            temp_dts = deepcopy(pure_dts)
+            # repalce with an impure double tensor
+            temp_dts[c] = impure_dts[c]
+            value = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
+            measurements[c] = measurements.get(c, 0.0)+(value/norm).item()
+
+        res = [v for v in measurements.values()]
+        return torch.tensor(res)
+
 
 class FermiTwoLayerSquareTPS(object):
     r'''
