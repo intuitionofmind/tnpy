@@ -1035,7 +1035,7 @@ class FermiSquareTPS(object):
     def bmps_left_canonical(self, mps: list):
         r'''
         left canonicalize a fermionic boundary MPS
-        canonicalized MPS is automatically normalized
+        ancillary function for varitional_bmps()
 
         Parameters
         ----------
@@ -1044,24 +1044,34 @@ class FermiSquareTPS(object):
 
         new_mps = []
         temp = mps[0]
+        q, r = tp.linalg.gtqr(temp, group_dims=((0, 2, 3), (1,)), qr_dims=(1, 0))
+        new_mps.append(q)
         for i in range(1, len(mps)):
+            temp = tp.gcontract('ab,bcde->acde', r, mps[i])
             q, r = tp.linalg.gtqr(temp, group_dims=((0, 2, 3), (1,)), qr_dims=(1, 0))
             new_mps.append(q)
-            temp = tp.gcontract('ab,bcde->acde', r, mps[i])
 
         return new_mps
 
     def bmps_right_canonical(self, mps: list):
         r'''
         right canonicalize a fermionic boundary MPS
+        ancillary function for varitional_bmps()
+
+        Parameters
+        ----------
+        mps: list[GTensor], the fermionic MPS
         '''
 
         new_mps = []
         temp = mps[-1]
-        for i in range(len(mps), 0, -1):
-            q, r = tp.linalg.gtqr(temp, group_dims=((0, 2, 3), (1,)), qr_dims=(1, 0))
+        q, r = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
+        new_mps.append(q)
+        for i in range(len(mps)-2, -1, -1):
+            q, r = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
             new_mps.append(q)
-            temp = tp.gcontract('ab,bcde', r, mps[i])
+            temp = tp.gcontract('abcd,be->aecd', mps[i], r)
+        new_mps.reverse()
 
         return new_mps
 
