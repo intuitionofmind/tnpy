@@ -1071,9 +1071,56 @@ class FermiSquareTPS(object):
             q, r = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
             new_mps.append(q)
             temp = tp.gcontract('abcd,be->aecd', mps[i], r)
+
         new_mps.reverse()
 
         return new_mps
+
+    def mv_left_fp(self, mpo, mps_u, mps_d, left_fp):
+        r'''
+        left fixed point multiplication
+
+        Parameters
+        ----------
+        mpo: list[GTensor]
+        '''
+
+        # |--<--a--<--*--<--g
+        # |          |h|i
+        # |-->--b-->--*-->--j
+        # |--<--c--<--*--<--k
+        # |          |l|m
+        # |-->--d-->--*-->--n
+        # |--<--e--<--*--<--o
+        # |          |p|q
+        # |--<--f--<--*--<--r
+        left_fp = tp.gcontract('abcde,aghi,bchijklm,delmnopq,frpq->ajknor', left_fp, mps_u[0], mpo[2], mpo[0], mps_d[0])
+        left_fp = tp.gcontract('abcde,aghi,bchijklm,delmnopq,frpq->ajknor', left_fp, mps_u[1], mpo[3], mpo[1], mps_d[1])
+
+        return left_fp
+
+    def mv_right_fp(self, mpo, mps_u, mps_d, right_fp):
+        r'''
+        right fixed point multiplication
+
+        Parameters
+        ----------
+        mpo: list[GTensor]
+        '''
+
+        # a--<--*--<--b--<--|
+        #      |c|d         |
+        # e-->--*-->--g-->--|
+        # f--<--*--<--h--<--|
+        #      |i|j         |
+        # k-->--*-->--m-->--|
+        # l--<--*--<--n--<--|
+        #     |o|p          |
+        # q--<--*--<--r--<--|
+        right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop->aefklq', mps_u[1], mpo[3], mpo[1], mps_d[1], right_fp)
+        right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop->aefklq', mps_u[0], mpo[2], mpo[0], mps_d[0], right_fp)
+
+        return right_fp
 
     def varitional_bmps(self, rho: int, init_mps=None, init_envs=None):
         r'''
@@ -1113,6 +1160,32 @@ class FermiSquareTPS(object):
             mps_d = []
             mps_d.append(torch.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[0].shape[6], mpo[0].shape[7]), cflag=True))
             mps_d.append(torch.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[1].shape[6], mpo[1].shape[7]), cflag=True))
+        # fixed point tensors
+        # |--<--
+        # |
+        # |-->--
+        # |--<--
+        # |
+        # |-->--
+        # |--<--
+        # |
+        # |--<--
+        if init_envs is None:
+            left_shape = virtual_shape, mpo[2].shape[0], mpo[2].shape[1], mpo[0].shape[0], mpo[0].shape[1], virtual_shape
+            right_shape = virtual_shape, mpo[3].shape[4], mpo[3].shape[5], mpo[1].shape[4], mpo[1].shape[5], virtual_shape
+            left_fp = tp.GTensor.rand(dual=(1, 0, 1, 0, 1, 1), shape=left_shape, cflag=True)
+            right_fp = tp.GTensor.rand(dual=(0, 1, 0, 1, 0, 0), shape=right_shape, cflag=True)
+
+        num_fp_iter = 32
+
+        err_u, err_d = 1.0, 1.0
+        while err_u < 1E-10 and err_d < 1E-10:
+            mps_ulc, mps_urc = self.bmps_left_canonical(mps_u), self.bmps_right_canonical(mps_u)
+            mps_dlc, mps_drc = self.bmps_left_canonical(mps_d), self.bmps_right_canonical(mps_d)
+
+            for i in range(num_fp_iter):
+
+            
 
 
     def dt_measure_onebody_vbmps(self, op: GTensor):
