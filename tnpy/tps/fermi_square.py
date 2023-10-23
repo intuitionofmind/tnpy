@@ -1115,12 +1115,114 @@ class FermiSquareTPS(object):
         #      |i|j         |
         # k-->--*-->--m-->--|
         # l--<--*--<--n--<--|
-        #     |o|p          |
+        #      |o|p         |
         # q--<--*--<--r--<--|
         right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop->aefklq', mps_u[1], mpo[3], mpo[1], mps_d[1], right_fp)
         right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop->aefklq', mps_u[0], mpo[2], mpo[0], mps_d[0], right_fp)
 
         return right_fp
+
+    def bmps_up_solver(self, le, re, col_mpo, init_tensor=None):
+        r'''
+        upper boundary MPS solver
+
+        Parameters
+        ----------
+        le: GTensor, left environment tensor
+        re: GTensor, right environment tensor
+        col_mpo: list[GTensor], column MPO tensors, order from up do down
+
+        Returns
+        -------
+        '''
+
+        # dual and shape for the MPS tensor
+        v_dual = (0, 1, 1, 0)
+        v_shape = (le.shape[0], re.shape[0], col_mpo[0].shape[2], col_mpo[0].shape[3])
+        v_whole_shape = tuple([math.prod(d) for d in v_shape])
+
+        def _mv(v):
+            tv = torch.from_numpy(v.reshape(v_whole_shape)).cdouble()
+            # convert to GTensor
+            gtv = tp.GTensor.extract_blocks(tv, v_dual, v_shape)
+            # |--<--a    g h    q--<--|
+            # |          | |          |
+            # |--<--b-->--*-->--i-->--|
+            # |--<--c--<--*--<--j--<--|
+            # |          |k|l         |
+            # |--<--d-->--*-->--m-->--|
+            # |--<--e--<--*--<--n--<--|
+            # |          |o|p         |
+            # |--<--f           r--<--|
+            gtw = tp.gcontract('abcde,bcghijkl,deklmnop,qijmnr,aqgh->frop', re, col_mpo[0], col_mpo[1], le, gtv)
+
+            return gtw.push_blocks().numpy().flatten()
+
+        init_v = None
+        if init_tensor is not None:
+            init_v = init_tensor.push_blocks().numpy().flatten()
+
+        dim_op = math.prod(v_whole_shape)
+        op = scipy.sparse.linalg.LinearOperator(shape=(dim_op, dim_op), matvec=_mv)
+        # with the largest magnitude
+        vals, vecs = scipy.sparse.linalg.eigs(
+            op, k=3, which='LM', v0=initial_v, maxiter=None,
+            return_eigenvectors=True)
+        inds = abs(vals).argsort()[::-1]
+        sorted_vals, sorted_vecs = vals[inds], vecs[:, inds]
+
+        return sorted_vals[0], tp.GTensor.extract_blocks(torch.from_numpy(sorted_vecs[:, 0].reshape(v_whole_shape)), v_dual, v_shape)
+
+    def bmps_down_solver(self, le, re, col_mpo, init_tensor=None):
+        r'''
+        lower boundary MPS solver
+
+        Parameters
+        ----------
+        le: GTensor, left environment tensor
+        re: GTensor, right environment tensor
+        col_mpo: list[GTensor], column MPO tensors, order from up do down
+
+        Returns
+        -------
+        '''
+
+        # dual and shape for the MPS tensor
+        v_dual = (0, 1, 1, 0)
+        v_shape = (le.shape[0], re.shape[0], col_mpo[0].shape[2], col_mpo[0].shape[3])
+        v_whole_shape = tuple([math.prod(d) for d in v_shape])
+
+        def _mv(v):
+            tv = torch.from_numpy(v.reshape(v_whole_shape)).cdouble()
+            # convert to GTensor
+            gtv = tp.GTensor.extract_blocks(tv, v_dual, v_shape)
+            # |--<--a    g h    q--<--|
+            # |          | |          |
+            # |--<--b-->--*-->--i-->--|
+            # |--<--c--<--*--<--j--<--|
+            # |          |k|l         |
+            # |--<--d-->--*-->--m-->--|
+            # |--<--e--<--*--<--n--<--|
+            # |          |o|p         |
+            # |--<--f           r--<--|
+            gtw = tp.gcontract('abcde,bcghijkl,deklmnop,qijmnr,frop->aqgh', re, col_mpo[0], col_mpo[1], le, gtv)
+
+            return gtw.push_blocks().numpy().flatten()
+
+        init_v = None
+        if init_tensor is not None:
+            init_v = init_tensor.push_blocks().numpy().flatten()
+
+        dim_op = math.prod(v_whole_shape)
+        op = scipy.sparse.linalg.LinearOperator(shape=(dim_op, dim_op), matvec=_mv)
+        # with the largest magnitude
+        vals, vecs = scipy.sparse.linalg.eigs(
+            op, k=3, which='LM', v0=initial_v, maxiter=None,
+            return_eigenvectors=True)
+        inds = abs(vals).argsort()[::-1]
+        sorted_vals, sorted_vecs = vals[inds], vecs[:, inds]
+
+        return sorted_vals[0], tp.GTensor.extract_blocks(torch.from_numpy(sorted_vecs[:, 0].reshape(v_whole_shape)), v_dual, v_shape)
 
     def varitional_bmps(self, rho: int, init_mps=None, init_envs=None):
         r'''
