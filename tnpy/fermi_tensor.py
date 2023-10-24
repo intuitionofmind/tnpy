@@ -301,14 +301,14 @@ class Z2gTensor(object):
             # i < j
             for i, j in pairs:
                 assert dual[i] ^ dual[j], 'vector spaces to be contracted are NOT matched (one and a dual one, or vice versa)'
-                # case: i <-- j
+                # case: i -<- j
                 # permute 'qs[j]' behind 'qs[i]'
                 if 1 == dual[i]:
                     sign *= (-1)**(temp_qs[j]*sum(temp_qs[(i+1):j]))
                     # set to zero as this very pair has been already contracted
                     # !do not pop out since we need to keep other pairs' position unchanged
                     temp_qs[i], temp_qs[j] = 0, 0
-                # case: i --> j
+                # case: i ->- j
                 # permute 'qs[i]' behind 'qs[j]'
                 else:
                     sign *= (-1)**(temp_qs[i]*sum(temp_qs[(i+1):(j+1)]))
@@ -380,8 +380,7 @@ class Z2gTensor(object):
                 block = oe.contract(oe_str, *block_tensors, backend='torch')
                 assert bare.shape == block.shape, 'shape of contracted block not correct'
                 new_blocks[new_qs] = new_blocks.get(new_qs, bare)+c_sign*p_sign*block
-                # new_blocks[new_qs] = new_blocks.get(new_qs, bare)+block
-                # print(oe_str, [t.shape for t in block_tensors], block.shape)
+                # print(fused_qs, fused_dual, new_qs, c_sign, p_sign, block)
 
         if 0 == len(new_dual):
             return new_blocks[()]
@@ -528,6 +527,30 @@ class GTensor(Z2gTensor):
         return cls(dual, shape, blocks, cflag, info)
 
     @classmethod
+    def fermion_parity_operator(cls, shape: tuple, cflag=False):
+        r'''
+        generate a fermion parity operator
+
+        References
+        ----------
+        PHYSICAL REVIEW B 95, 075108 (2017)
+
+        Parameters
+        ----------
+        dual: refer to '__init__()'
+        dims: tuple[int], denote the dims of even and odd sector
+        '''
+
+        assert shape[0] == shape[1], 'identity GTensor must have identical dimensions'
+
+        dual = (0, 1)
+        blocks = {}
+        blocks[(0, 0)] = torch.eye(shape[0][0])
+        blocks[(1, 1)] = -1.0*torch.eye(shape[0][1])
+
+        return cls(dual, shape, blocks, cflag)
+
+    @classmethod
     def rand(cls, dual: tuple, shape: tuple, cflag=False, info=None):
         r'''
         generate a random GTensor
@@ -585,6 +608,7 @@ class GTensor(Z2gTensor):
         ----------
         free_dims: tuple[int], free bonds not to be conjugated
         side: int, 0 or 1, namely the dagger on the left or right
+            crrespond to the unitary condition from QR or super-QR
         reverse: bool, if all the bonds are reversed or not
         '''
 
