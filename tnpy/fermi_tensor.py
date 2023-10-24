@@ -501,33 +501,31 @@ class GTensor(Z2gTensor):
         return cls(dual, shape, blocks, cflag, info)
 
     @classmethod
-    def eye(cls, dual: tuple, shape: tuple, cflag=False, info=None):
+    def eye(cls, dual: tuple, shape: tuple, cflag=False):
         r'''
         generate an identity GTensor matrix
 
         Parameters
         ----------
         dual: refer to '__init__()'
-        dims: tuple[int], denote the dims of even and odd sector
+        shape: tuple[tuple], shapes of all bonds
         '''
 
-        assert shape[0] == shape[1], 'identity GTensor must have identical dimensions'
-
-        if (0, 1) == dual:
-            sgn = 1.0
-        elif (1, 0) == dual:
-            sgn = -1.0
-        else:
-            raise ValueError('input dual is not valid')
+        assert shape[0] == shape[1], 'GTensor identity must have identical dimensions'
 
         blocks = {}
         blocks[(0, 0)] = torch.eye(shape[0][0])
-        blocks[(1, 1)] = sgn*torch.eye(shape[0][1])
+        blocks[(1, 1)] = torch.eye(shape[0][1])
 
-        return cls(dual, shape, blocks, cflag, info)
+        if (0, 1) == dual:
+            return cls((0, 1), shape, blocks, cflag)
+        elif (1, 0) == dual:
+            return cls((0, 1), shape, blocks, cflag).permute((1, 0))
+        else:
+            raise ValueError('input dual is not valid')
 
     @classmethod
-    def fermion_parity_operator(cls, shape: tuple, cflag=False):
+    def fermion_parity_operator(cls, dual: tuple, shape: tuple, cflag=False):
         r'''
         generate a fermion parity operator
 
@@ -537,18 +535,21 @@ class GTensor(Z2gTensor):
 
         Parameters
         ----------
-        dual: refer to '__init__()'
-        dims: tuple[int], denote the dims of even and odd sector
+        shape: tuple[tuple], shapes of all bonds
         '''
 
-        assert shape[0] == shape[1], 'identity GTensor must have identical dimensions'
+        assert shape[0] == shape[1], 'GTensor parity operator must have identical dimensions'
 
-        dual = (0, 1)
         blocks = {}
         blocks[(0, 0)] = torch.eye(shape[0][0])
         blocks[(1, 1)] = -1.0*torch.eye(shape[0][1])
 
-        return cls(dual, shape, blocks, cflag)
+        if (0, 1) == dual:
+            return cls((0, 1), shape, blocks, cflag)
+        elif (1, 0) == dual:
+            return cls((0, 1), shape, blocks, cflag).permute((1, 0))
+        else:
+            raise ValueError('input dual is not valid')
 
     @classmethod
     def rand(cls, dual: tuple, shape: tuple, cflag=False, info=None):
@@ -600,9 +601,38 @@ class GTensor(Z2gTensor):
 
         return cls(dual, shape, blocks, cflag, info)
 
-    def graded_conj(self, free_dims=(), side=0, reverse=False):
+    def conj(self, reverse=False):
         r'''
         conjugation of GTensor
+
+        Parameters
+        ----------
+        reverse: bool, if all the bonds are reversed or not
+        '''
+
+        # reverse
+        dims = [i for i in range(self._ndim)]
+        dims.reverse()
+        new_dual = [d ^ 1 for d in self._dual]
+        new_dual.reverse()
+        new_shape = list(self._shape)
+        new_shape.reverse()
+        # build new blocks
+        new_blocks = {}
+        for q, t in self._blocks.items():
+            new_q = list(q)
+            new_q.reverse()
+            new_blocks[tuple(new_q)] = t.conj().permute(dims)
+
+        # permute back to the original order if needed
+        if reverse:
+            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks)
+        else:
+            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
+
+    def graded_conj(self, free_dims=(), side=0, reverse=False):
+        r'''
+        graded conjugation of GTensor
 
         Parameters
         ----------
