@@ -1032,6 +1032,74 @@ class FermiSquareTPS(object):
         res = [v for v in measurements.values()]
         return torch.tensor(res)
 
+    def dt_fermion_parity_measure_ABCD_onebody(self, op: GTensor):
+        r'''
+        measure 1-body operator by double tensors
+        use normal conjugation and insert fermion parity operator
+
+        Parameters
+        ----------
+        op: GTensor, the one-body operator
+
+        Returns
+        -------
+        res: tensor, averaged values on each site
+        '''
+
+        merged_gts = self.merged_tensors()
+
+        gts, gts_dagger = {}, {}
+        gts_envs = {}
+        internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
+        external_dims = (0, 3), (2, 3), (0, 1), (1, 2)
+        parity_strs = 'Aa,Dd,abcde->AbcDe', 'cC,Dd,abcde->abCDe', 'Aa,bB,abcde->ABcde', 'bB,cC,abcde->aBCde'
+        for i, c in enumerate(self._coords):
+            gts[c] = merged_gts[c]
+            test_gt = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
+
+            temp = gts[c].conj()
+            p, q = external_dims[i]
+            # conjugated GTensor should be attached with an extra fermion parity operator if its dual is 0
+            # namely recover the normal trace if a supertrace happens on this connected bonds
+            if 0 == temp.dual[p]:
+                fp = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(gts[c].shape[p], gts[c].shape[p]))
+            else:
+                fp = tp.GTensor.eye(dual=(1, 0), shape=(gts[c].shape[p], gts[c].shape[p]))
+            if 0 == temp.dual[q]:
+                fq = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(gts[c].shape[q], gts[c].shape[q]))
+            else:
+                fq = tp.GTensor.eye(dual=(1, 0), shape=(gts[c].shape[q], gts[c].shape[q]))
+            gts_dagger[c] = tp.gcontract(parity_strs[i], fp, fq, temp)
+            print(i, parity_strs[i])
+            for key, val in gts_dagger[c].blocks().items():
+                print(key, (val-test_gt.blocks()[key]).norm())
+            # external bonds needs an extra environment tensor
+            envs = self.site_envs(c)
+            gts_envs[c] = envs[p], envs[q]
+
+        pure_dt_strs = 'abcde,aA,dD,ABCDe->bBcC', 'abcde,Cc,dD,ABCDe->aAbB', 'abcde,aA,Bb,ABCDe->cCdD', 'abcde,Bb,Cc,ABCDe->aAdD'
+        impure_dt_strs = 'abcde,aA,dD,eE,ABCDE->bBcC', 'abcde,Cc,dD,eE,ABCDE->aAbB', 'abcde,aA,Bb,eE,ABCDE->cCdD', 'abcde,Bb,Cc,eE,ABCDE->aAdD'
+        pure_dts, impure_dts = {}, {}
+        for i, c in enumerate(self._coords):
+            # print(i, c, pure_dt_strs[i], gts_envs[c])
+            pure_dts[c] = tp.gcontract(pure_dt_strs[i], gts_dagger[c], *gts_envs[c], gts[c])
+            impure_dts[c] = tp.gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op, gts[c])
+        # norm
+        norm = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *pure_dts.values())
+
+        measurements = {}
+        for i, c in enumerate(self._coords):
+            temp_dts = deepcopy(pure_dts)
+            # repalce with an impure double tensor
+            temp_dts[c] = impure_dts[c]
+            value = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
+            measurements[c] = measurements.get(c, 0.0)+(value/norm).item()
+
+        res = [v for v in measurements.values()]
+        return torch.tensor(res)
+
+
+
     def bmps_left_canonical(self, mps: list):
         r'''
         left canonicalize a fermionic boundary MPS
@@ -1075,6 +1143,10 @@ class FermiSquareTPS(object):
         new_mps.reverse()
 
         return new_mps
+
+    def bmps_norm(self, mps):
+        
+        return 1
 
     def mv_left_fp(self, mpo, mps_u, mps_d, left_fp):
         r'''
@@ -1224,6 +1296,10 @@ class FermiSquareTPS(object):
 
         return sorted_vals[0], tp.GTensor.extract_blocks(torch.from_numpy(sorted_vecs[:, 0].reshape(v_whole_shape)), v_dual, v_shape)
 
+    def bmps_up_sweep(self, left_fp, right_fp, mpo, mps):
+
+        return 1
+
     def varitional_bmps(self, rho: int, init_mps=None, init_envs=None):
         r'''
         varitional boundary MPS method
@@ -1285,9 +1361,6 @@ class FermiSquareTPS(object):
             mps_ulc, mps_urc = self.bmps_left_canonical(mps_u), self.bmps_right_canonical(mps_u)
             mps_dlc, mps_drc = self.bmps_left_canonical(mps_d), self.bmps_right_canonical(mps_d)
 
-            for i in range(num_fp_iter):
-
-            
 
 
     def dt_measure_onebody_vbmps(self, op: GTensor):
