@@ -1145,8 +1145,26 @@ class FermiSquareTPS(object):
         return new_mps
 
     def bmps_norm(self, mps):
-        
-        return 1
+        r'''
+        compute the norm of a fermonic boundary MPS
+        '''
+
+        # conjugated MPS
+        mps_dagger = []
+        for t in mps:
+            mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
+
+        virtual_shape = mps[0].shape[0]
+        left_env = tp.GTensor.eye(dual=(0, 1), shape=(virtual_shape, virtual_shape), cflag=True)
+        for td, t in zip(mps_dagger, mps):
+            # e--<--*--<--f
+            #      |c|d
+            # a-->--*-->--b
+            left_env = tp.gcontract('ae,abcd,efcd->bf', left_env, td, t)
+        # finally a fermion parity operator should be replenished on the last open bond
+        fpo = tp.GTensor.fermion_parity_operator(dual=(0, 1), shape=(virtual_shape, virtual_shape), cflag=True)
+
+        return tp.gcontract('ab,ba->', left_env, fpo)
 
     def mv_left_fp(self, mpo, mps_u, mps_d, left_fp):
         r'''
