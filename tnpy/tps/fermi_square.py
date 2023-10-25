@@ -1133,12 +1133,12 @@ class FermiSquareTPS(object):
 
         new_mps = []
         temp = mps[-1]
-        q, r = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
+        q, l = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
         new_mps.append(q)
         for i in range(len(mps)-2, -1, -1):
-            q, r = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
+            temp = tp.gcontract('abcd,be->aecd', mps[i], l)
+            q, l = tp.linalg.super_gtqr(temp, group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
             new_mps.append(q)
-            temp = tp.gcontract('abcd,be->aecd', mps[i], r)
 
         new_mps.reverse()
 
@@ -1149,22 +1149,84 @@ class FermiSquareTPS(object):
         compute the norm of a fermonic boundary MPS
         '''
 
+        virtual_shape = mps[0].shape[0]
         # conjugated MPS
         mps_dagger = []
         for t in mps:
             mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
+        # a fermion parity operator should be replenished on the last open bond of MPS
+        # fermion supertrace should be avoided here
+        fpo = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(virtual_shape, virtual_shape), cflag=True)
+        mps_dagger[-1] = tp.gcontract('abcd,be->aecd', mps_dagger[-1], fpo)
 
-        virtual_shape = mps[0].shape[0]
         left_env = tp.GTensor.eye(dual=(0, 1), shape=(virtual_shape, virtual_shape), cflag=True)
         for td, t in zip(mps_dagger, mps):
             # e--<--*--<--f
             #      |c|d
             # a-->--*-->--b
             left_env = tp.gcontract('ae,abcd,efcd->bf', left_env, td, t)
-        # finally a fermion parity operator should be replenished on the last open bond
-        fpo = tp.GTensor.fermion_parity_operator(dual=(0, 1), shape=(virtual_shape, virtual_shape), cflag=True)
 
-        return tp.gcontract('ab,ba->', left_env, fpo)
+        return tp.gcontract('aa->', left_env)
+
+    def bmps_up_cost(self, mpo, mps, left_fp, right_fp):
+        r'''
+        compute the cost for upper boundary MPS
+        '''
+
+        # conjugated MPS
+        mps_dagger = []
+        for t in mps:
+            mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
+        # a fermion parity operator should be replenished on the last open bond of MPS
+        # fermion supertrace should be avoided here
+        fpo = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(virtual_shape, virtual_shape), cflag=True)
+        mps_dagger[-1] = tp.gcontract('abcd,be->aecd', mps_dagger[-1], fpo)
+
+        # |--<--a--<--*--<--g
+        # |          |h|i
+        # |-->--b-->--*-->--j
+        # |--<--c--<--*--<--k
+        # |          |l|m
+        # |-->--d-->--*-->--n
+        # |--<--e--<--*--<--o
+        # |          |p|q
+        # |--<--f--<--*--<--r
+        left_fp = tp.gcontract(
+                'abcde,aghi,bchijklm,delmnopq,frqp->gjknor', left_fp, mps[0], mpo[2], mpo[0], mps_dagger[0])
+        # a--<--*--<--b--<--|
+        #      |c|d         |
+        # e-->--*-->--g-->--|
+        # f--<--*--<--h--<--|
+        #      |i|j         |
+        # k-->--*-->--m-->--|
+        # l--<--*--<--n--<--|
+        #      |o|p         |
+        # q--<--*--<--r--<--|
+        right_fp = tp.gcontract(
+                'abcd,efcdghij,klijmnop,qrop,bghmnr->aefklq', mps[1], mpo[3], mpo[1], mps_dagger[1], right_fp)
+
+        return tp.gcontract('abcdef,abcdef->', left_fp, right_fp)
+
+    def bmps_down_cost(self, mpo, mps, left_fp, right_fp):
+        r'''
+        compute the cost for lower boundary MPS
+        '''
+
+        # conjugated MPS
+        mps_dagger = []
+        for t in mps:
+            mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
+        # a fermion parity operator should be replenished on the last open bond of MPS
+        # fermion supertrace should be avoided here
+        fpo = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(virtual_shape, virtual_shape), cflag=True)
+        mps_dagger[-1] = tp.gcontract('abcd,be->aecd', mps_dagger[-1], fpo)
+
+        left_fp = tp.gcontract(
+                'abcde,aghi,bchijklm,delmnopq,frqp->gjknor', left_fp, mps_dagger[0], mpo[2], mpo[0], mps[0])
+        right_fp = tp.gcontract(
+                'abcd,efcdghij,klijmnop,qrop,bghmnr->aefklq', mps_dagger[1], mpo[3], mpo[1], mps[1], right_fp)
+
+        return tp.gcontract('abcdef,abcdef->', left_fp, right_fp)
 
     def mv_left_fp(self, mpo, mps_u, mps_d, left_fp):
         r'''
@@ -1184,8 +1246,8 @@ class FermiSquareTPS(object):
         # |--<--e--<--*--<--o
         # |          |p|q
         # |--<--f--<--*--<--r
-        left_fp = tp.gcontract('abcde,aghi,bchijklm,delmnopq,frpq->ajknor', left_fp, mps_u[0], mpo[2], mpo[0], mps_d[0])
-        left_fp = tp.gcontract('abcde,aghi,bchijklm,delmnopq,frpq->ajknor', left_fp, mps_u[1], mpo[3], mpo[1], mps_d[1])
+        left_fp = tp.gcontract('abcde,aghi,bchijklm,delmnopq,frpq->gjknor', left_fp, mps_u[0], mpo[2], mpo[0], mps_d[0])
+        left_fp = tp.gcontract('abcde,aghi,bchijklm,delmnopq,frpq->gjknor', left_fp, mps_u[1], mpo[3], mpo[1], mps_d[1])
 
         return left_fp
 
@@ -1207,8 +1269,8 @@ class FermiSquareTPS(object):
         # l--<--*--<--n--<--|
         #      |o|p         |
         # q--<--*--<--r--<--|
-        right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop->aefklq', mps_u[1], mpo[3], mpo[1], mps_d[1], right_fp)
-        right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop->aefklq', mps_u[0], mpo[2], mpo[0], mps_d[0], right_fp)
+        right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop,bghmnr->aefklq', mps_u[1], mpo[3], mpo[1], mps_d[1], right_fp)
+        right_fp = tp.gcontract('abcd,efcdghij,klijmnop,qrop,bghmnr->aefklq', mps_u[0], mpo[2], mpo[0], mps_d[0], right_fp)
 
         return right_fp
 
@@ -1315,6 +1377,12 @@ class FermiSquareTPS(object):
         return sorted_vals[0], tp.GTensor.extract_blocks(torch.from_numpy(sorted_vecs[:, 0].reshape(v_whole_shape)), v_dual, v_shape)
 
     def bmps_up_sweep(self, left_fp, right_fp, mpo, mps):
+
+        err, cost = 1.0, 1.0
+        n = 0
+        while err > 1E-12 or n < 10:
+            pass
+            # bring the MPS to right canonical
 
         return 1
 
