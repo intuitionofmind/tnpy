@@ -1144,9 +1144,9 @@ class FermiSquareTPS(object):
 
         return new_mps
 
-    def bmps_norm(self, mps):
+    def bmps_dagger(self, mps):
         r'''
-        compute the norm of a fermonic boundary MPS
+        compute the conjugated MPS
         '''
 
         virtual_shape = mps[0].shape[0]
@@ -1154,11 +1154,22 @@ class FermiSquareTPS(object):
         mps_dagger = []
         for t in mps:
             mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
-        # a fermion parity operator should be replenished on the last open bond of MPS
+
+        # !a fermion parity operator should be replenished on the last open bond of MPS
         # fermion supertrace should be avoided here
         fpo = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(virtual_shape, virtual_shape), cflag=True)
         mps_dagger[-1] = tp.gcontract('abcd,be->aecd', mps_dagger[-1], fpo)
 
+        return mps_dagger
+
+    def bmps_norm(self, mps):
+        r'''
+        compute the norm of a fermonic boundary MPS
+        '''
+
+        mps_dagger = self.bmps_dagger(mps)
+
+        virtual_shape = mps[0].shape[0]
         left_env = tp.GTensor.eye(dual=(0, 1), shape=(virtual_shape, virtual_shape), cflag=True)
         for td, t in zip(mps_dagger, mps):
             # e--<--*--<--f
@@ -1173,15 +1184,7 @@ class FermiSquareTPS(object):
         compute the cost for upper boundary MPS
         '''
 
-        # conjugated MPS
-        mps_dagger = []
-        for t in mps:
-            mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
-        # a fermion parity operator should be replenished on the last open bond of MPS
-        # fermion supertrace should be avoided here
-        fpo = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(virtual_shape, virtual_shape), cflag=True)
-        mps_dagger[-1] = tp.gcontract('abcd,be->aecd', mps_dagger[-1], fpo)
-
+        mps_dagger = self.bmps_dagger(mps)
         # |--<--a--<--*--<--g
         # |          |h|i
         # |-->--b-->--*-->--j
@@ -1212,14 +1215,7 @@ class FermiSquareTPS(object):
         compute the cost for lower boundary MPS
         '''
 
-        # conjugated MPS
-        mps_dagger = []
-        for t in mps:
-            mps_dagger.append(t.graded_conj(free_dims=(1,), side=0))
-        # a fermion parity operator should be replenished on the last open bond of MPS
-        # fermion supertrace should be avoided here
-        fpo = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(virtual_shape, virtual_shape), cflag=True)
-        mps_dagger[-1] = tp.gcontract('abcd,be->aecd', mps_dagger[-1], fpo)
+        mps_dagger = self.bmps_dagger(mps)
 
         left_fp = tp.gcontract(
                 'abcde,aghi,bchijklm,delmnopq,frqp->gjknor', left_fp, mps_dagger[0], mpo[2], mpo[0], mps[0])
@@ -1381,8 +1377,11 @@ class FermiSquareTPS(object):
         err, cost = 1.0, 1.0
         n = 0
         while err > 1E-12 or n < 10:
-            pass
             # bring the MPS to right canonical
+            q, l = tp.linalg.super_gtqr(mps[1], group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
+            mps[1] = q
+            old_gt = tp.gcontract('abcd,be->aecd', mps[0], l)
+            left_env = left_fp
 
         return 1
 
