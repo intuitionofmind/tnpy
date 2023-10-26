@@ -601,6 +601,16 @@ class GTensor(Z2gTensor):
 
         return cls(dual, shape, blocks, cflag, info)
 
+    def cdouble(self):
+        r'''
+        convert blocks of this GTensor to complex128
+        '''
+
+        for k, v in self._blocks.items():
+            self._blocks[k] = v.cdouble()
+
+        self._dtype = tuple(self._blocks.values())[0].dtype
+
     def conj(self, reverse=False):
         r'''
         conjugation of GTensor
