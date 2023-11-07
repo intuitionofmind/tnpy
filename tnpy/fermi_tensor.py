@@ -989,6 +989,7 @@ class GTensor(Z2gTensor):
         '''
 
         whole_shape = tuple([sum(d) for d in shape])
+        # print(dt.shape, whole_shape)
         assert tuple(dt.shape) == whole_shape, 'shape NOT consistent with the input dense tensor'
 
         qns_list = [(0, 1)]*len(dual)

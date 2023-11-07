@@ -2,6 +2,7 @@ import torch
 torch.set_default_dtype(torch.float64)
 
 import math
+import scipy
 
 from tnpy import GTensor
 from tnpy.linalg import svd
@@ -394,3 +395,24 @@ def ginv(gt: GTensor) -> GTensor:
         inv_gt = inv_gt.permute(dims=(1, 0))
 
     return inv_gt
+
+def gteigs(input_gt: GTensor, group_dims: tuple, k=6, which='LM', v0=None):
+    r'''
+    solve the eigenvalue problem of a GTensor
+
+    Parameters
+    ----------
+    input_gt: GTensor,
+    group_dims: tuple[tuple], divide axes of a GTensor into two groups
+    '''
+
+    assert len(group_dims[0]) == len(group_dims[1]), 'two groups of a GTensor must be equal'
+    for i, j in zip(group_dims[0], group_dims[1]):
+        assert input_gt.dual[i] == input_gt.dual[j] ^ 1, 'two groups of '
+        assert input_gt.shape[i] == input_gt.shape[j]
+
+    # permute to the new order
+    temp_gt = input_gt.permute(group_dims[0]+group_dims[1])
+    split = len(group_dims[0])
+
+    return 1

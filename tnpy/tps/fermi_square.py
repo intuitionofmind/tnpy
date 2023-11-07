@@ -2,6 +2,7 @@ from copy import deepcopy
 import itertools
 import math
 import numpy as np
+import scipy
 import opt_einsum as oe
 import pickle as pk
 
@@ -1286,11 +1287,12 @@ class FermiSquareTPS(object):
         # dual and shape for the MPS tensor
         v_dual = (0, 1, 1, 0)
         v_shape = (le.shape[0], re.shape[0], col_mpo[0].shape[2], col_mpo[0].shape[3])
-        v_whole_shape = tuple([math.prod(d) for d in v_shape])
+        v_whole_shape = tuple([sum(d) for d in v_shape])
 
         def _mv(v):
             tv = torch.from_numpy(v.reshape(v_whole_shape)).cdouble()
             # convert to GTensor
+            # print(tv.shape, v_shape)
             gtv = tp.GTensor.extract_blocks(tv, v_dual, v_shape)
             # |--<--a    g h    q--<--|
             # |          | |          |
@@ -1301,8 +1303,9 @@ class FermiSquareTPS(object):
             # |--<--e--<--*--<--n--<--|
             # |          |o|p         |
             # |--<--f           r--<--|
-            gtw = tp.gcontract('abcde,bcghijkl,deklmnop,qijmnr,aqgh->frop', re, col_mpo[0], col_mpo[1], le, gtv)
-
+            print('mv')
+            gtw = tp.gcontract('abcdef,bcghijkl,deklmnop,qijmnr,aqgh->frop', le, col_mpo[0], col_mpo[1], re, gtv)
+            
             return gtw.push_blocks().numpy().flatten()
 
         init_v = None
@@ -1313,11 +1316,12 @@ class FermiSquareTPS(object):
         op = scipy.sparse.linalg.LinearOperator(shape=(dim_op, dim_op), matvec=_mv)
         # with the largest magnitude
         vals, vecs = scipy.sparse.linalg.eigs(
-            op, k=3, which='LM', v0=initial_v, maxiter=None,
+            op, k=2, which='LM', v0=init_v, maxiter=None,
             return_eigenvectors=True)
         inds = abs(vals).argsort()[::-1]
         sorted_vals, sorted_vecs = vals[inds], vecs[:, inds]
 
+        print('MPS up solver:', sorted_vals[0])
         return sorted_vals[0], tp.GTensor.extract_blocks(torch.from_numpy(sorted_vecs[:, 0].reshape(v_whole_shape)), v_dual, v_shape)
 
     def bmps_down_solver(self, le, re, col_mpo, init_tensor=None):
@@ -1352,7 +1356,7 @@ class FermiSquareTPS(object):
             # |--<--e--<--*--<--n--<--|
             # |          |o|p         |
             # |--<--f           r--<--|
-            gtw = tp.gcontract('abcde,bcghijkl,deklmnop,qijmnr,frop->aqgh', re, col_mpo[0], col_mpo[1], le, gtv)
+            gtw = tp.gcontract('abcdef,bcghijkl,deklmnop,qijmnr,frop->aqgh', le, col_mpo[0], col_mpo[1], re, gtv)
 
             return gtw.push_blocks().numpy().flatten()
 
@@ -1364,7 +1368,7 @@ class FermiSquareTPS(object):
         op = scipy.sparse.linalg.LinearOperator(shape=(dim_op, dim_op), matvec=_mv)
         # with the largest magnitude
         vals, vecs = scipy.sparse.linalg.eigs(
-            op, k=3, which='LM', v0=initial_v, maxiter=None,
+            op, k=2, which='LM', v0=init_v, maxiter=None,
             return_eigenvectors=True)
         inds = abs(vals).argsort()[::-1]
         sorted_vals, sorted_vecs = vals[inds], vecs[:, inds]
@@ -1379,6 +1383,7 @@ class FermiSquareTPS(object):
         err, cost = 1.0, 1.0
         n = 0
         while err > 1E-12 or n < 10:
+            print(n, cost, err)
             # partition function density
             lams = []
 
@@ -1421,9 +1426,90 @@ class FermiSquareTPS(object):
             err = abs(new_cost-cost)
             cost = new_cost
             n += 1
-            print(n, cost, err)
 
         return lams, mps
+
+    def test_mv(self, gts, gts_dagger, mps, left_fp, right_fp):
+
+
+        # 0
+        left_env = left_fp
+        # bring the MPS to right canonical
+        q, l = tp.linalg.super_gtqr(mps[1], group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
+        mps[1] = q
+        # TODO: possible simplification
+        mps_dagger = self.bmps_dagger(mps)
+        temp_gt = tp.gcontract('abcd,be->aecd', mps[0], l)
+        # a--<--*--<--b--<--|
+        #      |c|d         |
+        # e-->--*-->--g-->--|
+        #       |
+        # f--<--*--<--h--<--|
+        #      |i|j         |
+        # k-->--*-->--m-->--|
+        # l--<--*--<--n--<--|
+        #      |o|p         |
+        # q--<--*--<--r--<--|
+        # print(mps[1].dual, mpo[3].dual, mpo[1].dual, mps_dagger[1].dual, right_fp.dual)
+        # print(mps[1].dtype, mpo[3].dtype, mpo[1].dtype, mps_dagger[1].dtype, right_fp.dtype)
+        # right_env = tp.gcontract(
+                # 'abcd,efcdghij,klijmnop,qrop,bghmnr->aefklq', mps[1], mpo[3], mpo[1], mps_dagger[1], right_fp)
+        right_env = right_fp
+
+        for i in range(10):
+            # |--<--a       g            s--<--|
+            # |             |                  |
+            # |-->--b,b-->--*-->--h,     h-->--|
+            # |            i| \j |k            |
+            # |--<--c,     c--<--*--<--l,l--<--|
+            # |                  |m            |
+            # |             |i                 |
+            # |-->--d,d-->--*-->--n,     n-->--|
+            # |            o| \p |m            |
+            # |--<--e,     e--<--*--<--q,q--<--|
+            # |                  |r            |
+            # |--<--f                    t--<--|
+            print('test mv:', i)
+            # gtw = tp.gcontract('abcdef,bcghijkl,deklmnop,qijmnr,aqgh->frop', left_env, mpo[2], mpo[0], right_env, mps[0])
+            gtw = tp.gcontract('abcdef,bghij,cklmj,dinop,emqrp,shlnqt,asgk->ftor', left_env, gts_dagger[2], gts[2], gts_dagger[0], gts[0], right_env, mps[0])
+
+    def test_mv_onelayer(self, mpo, mps, rho):
+
+        virtual_shape = rho // 2, rho // 2
+        left_shape = virtual_shape, mpo[2].shape[0], mpo[2].shape[1], virtual_shape
+        right_shape = virtual_shape, mpo[3].shape[4], mpo[3].shape[5], virtual_shape
+
+        left_fp = tp.GTensor.rand(dual=(1, 0, 1, 0), shape=left_shape, cflag=True)
+        right_fp = tp.GTensor.rand(dual=(0, 1, 0, 1), shape=right_shape, cflag=True)
+
+        left_fp, right_fp = (1.0/left_fp.norm())*left_fp, (1.0/right_fp.norm())*right_fp
+
+        # 0
+        left_env = left_fp
+        # bring the MPS to right canonical
+        q, l = tp.linalg.super_gtqr(mps[1], group_dims=((1, 2, 3), (0,)), qr_dims=(0, 1))
+        mps[1] = q
+        # TODO: possible simplification
+        mps_dagger = self.bmps_dagger(mps)
+        temp_gt = tp.gcontract('abcd,be->aecd', mps[0], l)
+        # a--<--*--<--b--<--|
+        #      |c|d         |
+        # e-->--*-->--g-->--|
+        # f--<--*--<--h--<--|
+        #      |i|j         |
+        # k--<--*--<--l--<--|
+        right_env = tp.gcontract(
+                'abcd,efcdghij,klij,bghl->aefk', mps[1], mpo[3], mps_dagger[1], right_fp)
+
+        for i in range(24):
+            # |--<--a    e f    k--<--|
+            # |          | |          |
+            # |-->--b-->--*-->--g-->--|
+            # |--<--c--<--*--<--h--<--|
+            # |          |i|j         |
+            # |--<--d           l--<--|
+            print('test 1-layer mv:', i)
+            gtw = tp.gcontract('abcd,bcefghij,kghl,akef->dlij', left_env, mpo[2], right_env, mps[0])
 
     def variational_bmps(self, rho: int, init_mps=None, init_envs=None):
         r'''
@@ -1437,19 +1523,19 @@ class FermiSquareTPS(object):
         '''
 
         merged_gts = self.merged_tensors()
-
-        gts, gts_dagger = {}, {}
+        # tensors for the TPS
+        tps_gts, tps_gts_dagger = [], []
         internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
-        # gts_envs = {}
         for i, c in enumerate(self._coords):
-            gts[c] = merged_gts[c]
-            gts_dagger[c] = gts[c].graded_conj(free_dims=internal_dims[i])
-            # p, q = external_dims[i]
-            # gts_envs[c] = envs[p], envs[q]
-        # double tensor as MPO
-        mpo = []
-        for c in self._coords:
-            mpo.append(tp.gcontract('abcde,ABCDe->aAbBcCdD', gts_dagger[c], gts[c]))
+            tps_gts.append(merged_gts[c])
+            tps_gts_dagger.append(merged_gts[c].graded_conj(free_dims=internal_dims[i]))
+
+        # # double tensor as MPO
+        # mpo = []
+        # for c in self._coords:
+        #     temp = tp.gcontract('abcde,ABCDe->aAbBcCdD', gts_dagger[c], gts[c])
+        #     temp.cdouble()
+        #     mpo.append(temp)
 
         mps_dual = (0, 1, 1, 0)
         virtual_shape = (rho // 2, rho // 2)
@@ -1458,11 +1544,11 @@ class FermiSquareTPS(object):
         # initial fixed points for up and down MPS
         if init_mps is None:
             mps_u = []
-            mps_u.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[2].shape[2], mpo[2].shape[3]), cflag=True))
-            mps_u.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[3].shape[2], mpo[3].shape[3]), cflag=True))
+            mps_u.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, tps_gts_dagger[2].shape[1], tps_gts[2].shape[1]), cflag=True))
+            mps_u.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, tps_gts_dagger[2].shape[1], tps_gts[2].shape[1]), cflag=True))
             mps_d = []
-            mps_d.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[0].shape[6], mpo[0].shape[7]), cflag=True))
-            mps_d.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, mpo[1].shape[6], mpo[1].shape[7]), cflag=True))
+            mps_d.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, tps_gts_dagger[0].shape[3], tps_gts[0].shape[3]), cflag=True))
+            mps_d.append(tp.GTensor.rand(dual=mps_dual, shape=(virtual_shape, virtual_shape, tps_gts_dagger[0].shape[3], tps_gts[0].shape[3]), cflag=True))
         # fixed point tensors
         # |--<--
         # |
@@ -1474,8 +1560,8 @@ class FermiSquareTPS(object):
         # |
         # |-->--
         if init_envs is None:
-            left_shape = virtual_shape, mpo[2].shape[0], mpo[2].shape[1], mpo[0].shape[0], mpo[0].shape[1], virtual_shape
-            right_shape = virtual_shape, mpo[3].shape[4], mpo[3].shape[5], mpo[1].shape[4], mpo[1].shape[5], virtual_shape
+            left_shape = virtual_shape, tps_gts_dagger[2].shape[0], tps_gts[2].shape[0], tps_gts_dagger[0].shape[0], tps_gts[0].shape[0], virtual_shape
+            right_shape = virtual_shape, tps_gts_dagger[3].shape[2], tps_gts[3].shape[2], tps_gts_dagger[1].shape[2], tps_gts[1].shape[2], virtual_shape
             left_fp = tp.GTensor.rand(dual=(1, 0, 1, 0, 1, 0), shape=left_shape, cflag=True)
             right_fp = tp.GTensor.rand(dual=(0, 1, 0, 1, 0, 1), shape=right_shape, cflag=True)
 
@@ -1483,7 +1569,11 @@ class FermiSquareTPS(object):
 
         num_fp_iter = 32
         
-        vals, mps_u = self.bmps_up_sweep(mpo, mps_u, left_fp, right_fp)
+        # vals, mps_u = self.bmps_up_sweep(mpo, mps_u, left_fp, right_fp)
+        self.test_mv(tps_gts, tps_gts_dagger, mps_u, left_fp, right_fp)
+        # self.test_mv_onelayer(mpo, mps_u, rho)
+
+        '''
 
         err_u, err_d = 1.0, 1.0
         while err_u < 1E-10 and err_d < 1E-10:
@@ -1494,6 +1584,7 @@ class FermiSquareTPS(object):
                 # pass
 
             vals, mps_u = self.bmps_up_sweep(mpo, mps_u, left_fp, right_fp)
+        '''
 
 
     def dt_measure_onebody_vbmps(self, op: GTensor):
