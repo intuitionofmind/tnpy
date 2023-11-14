@@ -702,18 +702,20 @@ class SquareTJ1J2(object):
         # build H_{i'ij'jk'k}^{n_{i'}n_{i}n_{j'}n_{j}n_{k'}n_{k}}
         # pay attention to the natural tensor product order
         dual = (0, 1, 0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*6)
         blocks = {}
         block_shape = tuple([self._dim_phys]*6)
 
         bare = torch.zeros(block_shape)
         temp = torch.zeros(block_shape)
 
+        # (phy index, fermion index)
         id_states = (0, 0), (0, 1), (1, 1)
 
         over_counting = 0.25
         # hopping t-terms
         # graded tensor product idenity of k
-        # c_{i}^{dagger}c_{j}
+        # c_{i}^{dagger} c_{j} 1_{k}
         for l, n in id_states:
             temp.zero_()
             # uparrow
@@ -721,19 +723,20 @@ class SquareTJ1J2(object):
             # downarrow
             temp[1, 0, 0, 1, l, l] = 1.0 
             blocks[(1, 0, 0, 1, n, n)] = blocks.get((1, 0, 0, 1, n, n), bare)+(-1.0*over_counting*self._t*temp)
-        # Hermitian conjugate
+        # c_{i} c_{j}^{dagger} 1_{k}
         for l, n in id_states:
             temp.zero_()
             temp[0, 0, 0, 0, l, l] = -1.0 
             temp[0, 1, 1, 0, l, l] = -1.0
             blocks[(0, 1, 1, 0, n, n)] = blocks.get((0, 1, 1, 0, n, n), bare)+(-1.0*over_counting*self._t*temp)
 
-        # c_{j}^{dagger}c_{k}
+        # 1_{i} c_{j}^{dagger}c_{k}
         for l, n in id_states:
             temp.zero_()
             temp[l, l, 0, 0, 0, 0] = 1.0 
             temp[l, l, 1, 0, 0, 1] = 1.0 
             blocks[(n, n, 1, 0, 0, 1)] = blocks.get((n, n, 1, 0, 0, 1), bare)+(-1.0*over_counting*self._t*temp)
+        # 1_{i} c_{j}^{dagger}c_{k}
         for l, n in id_states:
             temp.zero_()
             temp[l, l, 0, 0, 0, 0] = -1.0 
@@ -790,193 +793,7 @@ class SquareTJ1J2(object):
                 temp[r, r, s, s, 1, 1] = 1.0
                 blocks[(m, m, n, n, 1, 1)] = blocks.get((m, m, n, n, 1, 1), bare)+(-1.0*over_counting*self._mu*temp)
 
-        return GTensor(dual, blocks).permute((0, 2, 4, 1, 3, 5))
-
-    def twobody_hopping(self) -> GTensor:
-
-        dual = (0, 1, 0, 1)
-        blocks = {}
-        block_shape = tuple([self._dim_phys]*4)
-
-        bare = torch.zeros(block_shape)
-        temp = torch.zeros(block_shape)
-
-        temp.zero_()
-        # uparrow
-        temp[0, 0, 0, 0] = 1.0 
-        # downarrow
-        temp[1, 0, 0, 1] = 1.0 
-        blocks[(1, 0, 0, 1)] = blocks.get((1, 0, 0, 1), bare)+(-1.0*self._t*temp)
-        temp.zero_()
-        temp[0, 0, 0, 0] = -1.0 
-        temp[0, 1, 1, 0] = -1.0
-        blocks[(0, 1, 1, 0)] = blocks.get((0, 1, 1, 0), bare)+(-1.0*self._t*temp)
-
-        return tp.gpermute(GTensor(dual, blocks), (0, 2, 1, 3))
-
-    def twobody_heisenbergJ1(self) -> GTensor:
-
-        dual = (0, 1, 0, 1)
-        blocks = {}
-        block_shape = tuple([self._dim_phys]*4)
-
-        bare = torch.zeros(block_shape)
-        temp = torch.zeros(block_shape)
-
-        temp.zero_()
-        temp[1, 0, 0, 1] = 0.5 
-        temp[0, 1, 1, 0] = 0.5 
-        temp[1, 1, 0, 0] = -0.5
-        temp[0, 0, 1, 1] = -0.5
-        blocks[(1, 1, 1, 1)] = blocks.get((1, 1, 1, 1), bare)+(self._J1*temp)
-
-        return tp.gpermute(GTensor(dual, blocks), (0, 2, 1, 3))
-
-    def threebody_heisenbergJ2(self) -> GTensor:
-
-        dual = (0, 1, 0, 1, 0, 1)
-        blocks = {}
-        block_shape = tuple([self._dim_phys]*6)
-
-        bare = torch.zeros(block_shape)
-        temp = torch.zeros(block_shape)
-
-        # Heisenberg J2-terms
-        for l, n in itertools.product(range(2), range(2)):
-            temp.zero_()
-            temp[1, 0, l, l, 0, 1] = 0.5 
-            temp[0, 1, l, l, 1, 0] = 0.5 
-            temp[1, 1, l, l, 0, 0] = -0.5
-            temp[0, 0, l, l, 1, 1] = -0.5
-            blocks[(1, 1, n, n, 1, 1)] = blocks.get((1, 1, n, n, 1, 1), bare)+(over_counting*self._J2*temp)
-
-        # permute to H_{i'j'ij}^{n_{i'}n_{j'}n_{i}n_{j}}
-        return tp.gpermute(GTensor(dual, blocks), (0, 2, 4, 1, 3, 5))
-
-    def twobody_tJ1ham(self) -> GTensor:
-        r'''
-        build the Hamiltonian as a GTensor by listing all possible quantum channels
-
-        # H_{i'j'ij}^{n_{i'}n_{j'}n_{i}n_{j}}
-        #   i'   j'
-        #   |0   |0
-        #   ^    ^
-        #   |    |
-        #   *----*
-        #   |    |
-        #   ^    ^
-        #   |1   |1
-        #   i    j
-        '''
-
-        # in the first place
-        # build H_{i'ij'j}^{n_{i'}n_{i}n_{j'}n_{j}}
-        # pay attention to the natural tensor product order
-        dual = (0, 1, 0, 1)
-        blocks = {}
-        block_shape = tuple([self._dim_phys]*4)
-
-        bare = torch.zeros(block_shape)
-        temp = torch.zeros(block_shape)
-
-        # hopping t-terms
-        temp[0, 0, 0, 0] = 1.0 
-        temp[1, 0, 0, 1] = 1.0
-        blocks[(1, 0, 0, 1)] = blocks.get((1, 0, 0, 1), bare)+(-1.0*self._t*temp)
-        # complex conjugate
-        temp.zero_()
-        temp[0, 0, 0, 0] = -1.0
-        temp[0, 1, 1, 0] = -1.0
-        blocks[(0, 1, 1, 0)] = blocks.get((0, 1, 1, 0), bare)+(-1.0*self._t*temp)
-
-        # Heisenberg J-terms
-        temp.zero_()
-        # off-diagonal
-        temp[1, 0, 0, 1] = 0.5
-        temp[0, 1, 1, 0] = 0.5
-        # diagonal
-        temp[1, 1, 0, 0] = -0.5
-        temp[0, 0, 1, 1] = -0.5
-        blocks[(1, 1, 1, 1)] = blocks.get((1, 1, 1, 1), bare)+(self._J1*temp)
-
-        # chemical potential
-        # there is a minus sign by default
-        # double occupied state should be projected out: | e_{k}^{n} >, k=1, n=0
-        id_states = (0, 0), (0, 1), (1, 1)
-        # n_{i} \otimes 1
-        for k, n in id_states:
-            temp.zero_()
-            temp[0, 0, k, k] = 0.25
-            temp[1, 1, k, k] = 0.25
-            blocks[(1, 1, n, n)] = blocks.get((1, 1, n, n), bare)+(-1.0*self._mu*temp)
-        # 1 \otimes n_{j}
-        for k, n in id_states:
-            temp.zero_()
-            temp[k, k, 0, 0] = 0.25
-            temp[k, k, 1, 1] = 0.25
-            blocks[(n, n, 1, 1)] = blocks.get((n, n, 1, 1), bare)+(-1.0*self._mu*temp)
-
-        return GTensor(dual, blocks).permute((0, 2, 1, 3))
-
-    def threebody_J2ham(self) -> GTensor:
-
-        dual = (0, 1, 0, 1, 0, 1)
-        blocks = {}
-        block_shape = tuple([self._dim_phys]*6)
-
-        bare = torch.zeros(block_shape)
-        temp = torch.zeros(block_shape)
-
-        id_states = (0, 0), (0, 1), (1, 1)
-
-        # Heisenberg J2-terms
-        for l, n in id_states:
-            temp.zero_()
-            temp[1, 0, l, l, 0, 1] = 0.5 
-            temp[0, 1, l, l, 1, 0] = 0.5 
-            temp[1, 1, l, l, 0, 0] = -0.5
-            temp[0, 0, l, l, 1, 1] = -0.5
-            blocks[(1, 1, n, n, 1, 1)] = blocks.get((1, 1, n, n, 1, 1), bare)+(self._J2*temp)
-
-        return GTensor(dual, blocks).permute((0, 2, 4, 1, 3, 5))
-
-    def twobody_time_evo(self, op: GTensor, delta: float, order: int) -> GTensor:
-        r'''
-        time evolution by Talyor expansion
-
-        Parameters
-        ----------
-        delta: float, time evolution step size
-        order: int, how many Taylor orders you want
-        '''
-
-        # build the identity operator
-        dual = (0, 1, 0, 1)
-        block_shape = tuple([self._dim_phys]*4)
-
-        temp = torch.zeros(block_shape)
-        bare = torch.zeros(block_shape)
-        blocks = {}
-        id_states = (0, 0), (0, 1), (1, 1)
-        # k, m: the first
-        # l, n: the second
-        for k, m in id_states:
-            for l, n in id_states:
-                temp.zero_()
-                temp[k, k, l, l] = 1.0
-                blocks[(m, m, n, n)] = blocks.get((m, m, n, n), bare)+temp
-
-        id_gt = GTensor(dual, blocks).permute((0, 2, 1, 3))
-        # powers of operators
-        op_powers = [id_gt, op]
-        for i in range(2, order):
-            op_powers.append(tp.gcontract('abcd,cdef->abef', op, op_powers[i-1]))
-        # taylor expansion
-        time_evo = op_powers[0]
-        for i in range(1, order):
-            time_evo = time_evo+(1.0/math.factorial(i))*((-delta)**i)*op_powers[i]
-
-        return time_evo
+        return GTensor(dual, shape, blocks).permute((0, 2, 4, 1, 3, 5))
 
     def threebody_time_evo(self, op: GTensor, delta: float, order: int) -> GTensor:
         r'''
@@ -993,6 +810,7 @@ class SquareTJ1J2(object):
 
         # build the identity operator
         dual = (0, 1, 0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*6)
         block_shape = tuple([self._dim_phys]*6)
 
         temp = torch.zeros(block_shape)
@@ -1005,7 +823,7 @@ class SquareTJ1J2(object):
                     temp[i, i, j, j, k, k] = 1.0
                     blocks[(m, m, n, n, o, o)] = blocks.get((m, m, n, n, o, o), bare)+temp
 
-        id_gt = GTensor(dual, blocks).permute((0, 2, 4, 1, 3, 5))
+        id_gt = GTensor(dual, shape, blocks).permute((0, 2, 4, 1, 3, 5))
 
         # powers of the operator
         powers = [id_gt, op]
