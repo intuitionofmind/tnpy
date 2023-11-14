@@ -559,8 +559,10 @@ class FermiSquareTPS(object):
             rl = tp.gcontract('abc,bcd->ad', rx, lx)
             u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
             # only left-conjugation of U and right-conjugation of V are valid under truncation
-            u_dagger = u.graded_conj(iso_dims=(1,), side=0)
-            v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            # u_dagger = u.graded_conj(iso_dims=(1,), side=0)
+            # v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            u_dagger = u.graded_conj(free_dims=(1,), side=0, reverse=True)
+            v_dagger = v.graded_conj(free_dims=(0,), side=1, reverse=True)
             s_inv = tp.linalg.ginv(s)
 
             '''
@@ -638,8 +640,11 @@ class FermiSquareTPS(object):
             # build projectors
             rl = tp.gcontract('abc,bcd->ad', ry, ly)
             u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
-            u_dagger = u.graded_conj(iso_dims=(1,), side=0)
-            v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            # u_dagger = u.graded_conj(iso_dims=(1,), side=0)
+            # v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            u_dagger = u.graded_conj(free_dims=(1,), side=0, reverse=True)
+            v_dagger = v.graded_conj(free_dims=(0,), side=1, reverse=True)
+
             s_inv = tp.linalg.ginv(s)
 
             '''
