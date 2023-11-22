@@ -909,6 +909,11 @@ class FermiSquareTPS(object):
             expand to larger D
         '''
 
+        if time_evo2 is not None:
+            te2_mpo = self.twobody_mpo_factorize(time_evo2)
+
+        if time_evo3 is not None:
+            te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
         for c in self._coords:
             cx = (c[0]+1) % self._nx, c[1]
@@ -916,8 +921,7 @@ class FermiSquareTPS(object):
             cxy = (c[0]+1) % self._nx, (c[1]+1) % self._ny
 
             if time_evo2 is not None:
-                te2_mpo = self.twobody_mpo_factorize(time_evo2)
-
+                # te2_mpo = self.twobody_mpo_factorize(time_evo2)
                 # X-direction
                 gts = [self._site_tensors[c], self._site_tensors[cx]]
                 envs = [self.mixed_site_envs(c, ex_bonds=(0, 1, 3)), self.mixed_site_envs(cx, ex_bonds=(1, 2, 3))]
@@ -1046,6 +1050,7 @@ class FermiSquareTPS(object):
 
             # three-body gate
             if time_evo3 is not None:
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
                 # starting from A
                 # ABD
                 #      *3
@@ -1055,7 +1060,7 @@ class FermiSquareTPS(object):
                 # 0*-<-*1,C,AB,D
                 cluster = [c, cx, cxy]
                 external_bonds = (0, 1, 3), (2, 3), (0, 1, 2)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1107,21 +1112,20 @@ class FermiSquareTPS(object):
                     prs.append(tp.gcontract('Aab,bc,cd->Aad', ls[i], v_dagger, s_inv))
                     pls.append(tp.gcontract('dc,cb,bAa->dAa', s_inv, u_dagger, rs[i]))
 
-                    '''
                     # check isometry of U and V
-                    iso = tp.gcontract('ab,bc->ac', u_dagger, u)
-                    print('Iso U:', iso.dual)
-                    for q, t in iso.blocks().items():
-                        print(q, t.diag())
-                    iso = tp.gcontract('ab,bc->ac', v, v_dagger)
-                    print('Iso V:', iso.dual)
-                    for q, t in iso.blocks().items():
-                        print(q, t.diag())
-                    '''
+                    # iso = tp.gcontract('ab,bc->ac', u_dagger, u)
+                    # print('Iso U:', iso.dual)
+                    # for q, t in iso.blocks().items():
+                    #     print(q, t.diag())
+                    # iso = tp.gcontract('ab,bc->ac', v, v_dagger)
+                    # print('Iso V:', iso.dual)
+                    # for q, t in iso.blocks().items():
+                    #     print(q, t.diag())
 
                 mgts[0] = tp.gcontract('abCcde,Ccf->abfde', mgts[0], prs[0])
                 mgts[1] = tp.gcontract('fAa,AaBbcde,Bbg->fgcde', pls[0], mgts[1], prs[1])
                 mgts[2] = tp.gcontract('fDd,abcDde->abcfe', pls[1], mgts[2])
+
                 envs_inv[0][2] = GTensor.eye(dual=(0, 1), shape=ss[0].shape)
                 envs_inv[1][0] = GTensor.eye(dual=(0, 1), shape=ss[0].shape)
                 envs_inv[1][1] = GTensor.eye(dual=(0, 1), shape=ss[1].shape)
@@ -1155,7 +1159,7 @@ class FermiSquareTPS(object):
                 #  *0,B,DC,A
                 cluster = [c, cy, cxy]
                 external_bonds = (0, 2, 3), (0, 1), (1, 2, 3)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1254,7 +1258,7 @@ class FermiSquareTPS(object):
                 # 0*--<--*1, A,CB,D
                 cluster = [cx, c, cy]
                 external_bonds = (1, 2, 3), (0, 3), (0, 1, 2)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1349,7 +1353,7 @@ class FermiSquareTPS(object):
                 #        *1,B,DA,C
                 cluster = [cx, cxy, cy]
                 external_bonds = (0, 2, 3), (1, 2), (0, 1, 3)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1381,9 +1385,9 @@ class FermiSquareTPS(object):
 
                 # set two kinds of cut-off
                 if sort_weights:
-                    cf = sum(gts[0].shape[0])
+                    cf = sum(gts[0].shape[1])
                 else:
-                    cf = gts[0].shape[0][0], gts[0].shape[0][1]
+                    cf = gts[0].shape[1][0], gts[0].shape[1][1]
 
                 ss = []
                 prs, pls = [], []
@@ -1447,7 +1451,7 @@ class FermiSquareTPS(object):
                 # 0*-<-*1
                 cluster = [cxy, cx, c]
                 external_bonds = (0, 1, 2), (2, 3), (0, 1, 3)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1541,7 +1545,7 @@ class FermiSquareTPS(object):
                 #  *0
                 cluster = [cxy, cy, c]
                 external_bonds = (1, 2, 3), (0, 1), (0, 2, 3)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1638,7 +1642,7 @@ class FermiSquareTPS(object):
                 # 0*--<--*1
                 cluster = [cy, c, cx]
                 external_bonds = (0, 1, 2), (0, 3), (1, 2, 3)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -1733,7 +1737,7 @@ class FermiSquareTPS(object):
                 #        *1
                 cluster = [cy, cxy, cx]
                 external_bonds = (0, 1, 3), (1, 2), (0, 2, 3)
-                te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+                # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
                 gts = [self._site_tensors[site] for site in cluster]
                 envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
