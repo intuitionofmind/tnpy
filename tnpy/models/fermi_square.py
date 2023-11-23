@@ -782,6 +782,7 @@ class SquareTJ1J2(object):
             temp[1, 1, 0, 0, l, l] = -0.5
             temp[0, 0, 1, 1, l, l] = -0.5
             blocks[(1, 1, 1, 1, n, n)] = blocks.get((1, 1, 1, 1, n, n), bare)+(over_counting*self._J1*temp)
+        # j, k
         for l, n in id_states:
             temp.zero_()
             temp[l, l, 1, 0, 0, 1] = 0.5 
@@ -791,7 +792,7 @@ class SquareTJ1J2(object):
             blocks[(n, n, 1, 1, 1, 1)] = blocks.get((n, n, 1, 1, 1, 1), bare)+(over_counting*self._J1*temp)
 
         # Heisenberg J2-terms
-        # j, k
+        # i, k
         over_counting = 0.25
         for l, n in id_states:
             temp.zero_()
@@ -804,7 +805,6 @@ class SquareTJ1J2(object):
         # chemical potential
         # there is a minus sign by default
         over_counting = 1.0/24.0
-        # over_counting = 1.0/72.0
         # n_{i}
         for r, m in id_states:
             for s, n in id_states:
@@ -822,6 +822,7 @@ class SquareTJ1J2(object):
         # n_{k}
         for r, m in id_states:
             for s, n in id_states:
+                temp.zero_()
                 temp[r, r, s, s, 0, 0] = 1.0
                 temp[r, r, s, s, 1, 1] = 1.0
                 blocks[(m, m, n, n, 1, 1)] = blocks.get((m, m, n, n, 1, 1), bare)+(-1.0*over_counting*self._mu*temp)
