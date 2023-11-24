@@ -3785,58 +3785,51 @@ class FermiSquareTPS(object):
 
         merged_gts = self.merged_tensors()
 
-        gts, gts_dagger = {}, {}
-        gts_envs = {}
         internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
         external_dims = (0, 3), (2, 3), (0, 1), (1, 2)
-        for i, c in enumerate(self._coords):
-            gts[c] = merged_gts[c]
-            gts_dagger[c] = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
-            # external bonds
-            envs = self.site_envs(c)
-            p, q = external_dims[i]
-            gts_envs[c] = envs[p], envs[q]
 
         pure_dt_strs = 'abcde,aA,dD,ABCDe->bBcC', 'abcde,Cc,dD,ABCDe->aAbB', 'abcde,aA,Bb,ABCDe->cCdD', 'abcde,Bb,Cc,ABCDe->aAdD'
         impure_dt_strs = 'abcde,aA,dD,eE,ABCDE->bBcC', 'abcde,Cc,dD,eE,ABCDE->aAbB', 'abcde,aA,Bb,eE,ABCDE->cCdD', 'abcde,Bb,Cc,eE,ABCDE->aAdD'
 
-        pure_dts, impure_dts_0, impure_dts_1 = {}, {}, {}
-        for i, c in enumerate(self._coords):
-            # print(i, c, pure_dt_strs[i], gts_envs[c])
-            pure_dts[c] = tp.gcontract(pure_dt_strs[i], gts_dagger[c], *gts_envs[c], gts[c])
-            impure_dts_0[c] = tp.z2gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_0, gts[c])
-            impure_dts_1[c] = tp.z2gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_1, gts[c])
-        # norm
-        norm = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *pure_dts.values())
-
+        # loop through four UCs
         measurements = []
-        temp_dts = deepcopy(pure_dts)
-        # repalce with an impure double tensor
-        temp_dts[(0, 0)] = impure_dts_0[(0, 0)]
-        temp_dts[(1, 0)] = impure_dts_1[(1, 0)]
-        value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-        measurements.append((value/norm).item())
+        for d in self._coords:
+            dx = (d[0]+1) % self._nx, d[1]
+            dy = d[0], (d[1]+1) % self._ny
+            dxy = (d[0]+1) % self._nx, (d[1]+1) % self._ny
 
-        temp_dts = deepcopy(pure_dts)
-        # repalce with an impure double tensor
-        temp_dts[(0, 0)] = impure_dts_0[(0, 0)]
-        temp_dts[(0, 1)] = impure_dts_1[(0, 1)]
-        value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-        measurements.append((value/norm).item())
+            cluster = d, dx, dy, dxy
 
-        temp_dts = deepcopy(pure_dts)
-        # repalce with an impure double tensor
-        temp_dts[(1, 0)] = impure_dts_0[(1, 0)]
-        temp_dts[(1, 1)] = impure_dts_1[(1, 1)]
-        value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-        measurements.append((value/norm).item())
+            gts, gts_dagger = {}, {}
+            gts_envs = {}
+            for i, c in enumerate(cluster):
+                gts[c] = merged_gts[c]
+                gts_dagger[c] = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
+                envs = self.site_envs(c)
+                p, q = external_dims[i]
+                gts_envs[c] = envs[p], envs[q]
 
-        temp_dts = deepcopy(pure_dts)
-        # repalce with an impure double tensor
-        temp_dts[(0, 1)] = impure_dts_0[(0, 1)]
-        temp_dts[(1, 1)] = impure_dts_1[(1, 1)]
-        value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-        measurements.append((value/norm).item())
+            pure_dts, impure_dts_0, impure_dts_1 = {}, {}, {}
+            for i, c in enumerate(cluster):
+                pure_dts[c] = tp.gcontract(pure_dt_strs[i], gts_dagger[c], *gts_envs[c], gts[c])
+                impure_dts_0[c] = tp.z2gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_0, gts[c])
+                impure_dts_1[c] = tp.z2gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_1, gts[c])
+            
+            norm = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *pure_dts.values())
+
+            impure_dts = deepcopy(pure_dts)
+            # repalce with an impure double tensor
+            impure_dts[d] = impure_dts_0[d]
+            impure_dts[dx] = impure_dts_1[dx]
+            value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *impure_dts.values())
+            measurements.append((value/norm).item())
+
+            impure_dts = deepcopy(pure_dts)
+            # repalce with an impure double tensor
+            impure_dts[d] = impure_dts_0[d]
+            impure_dts[dy] = impure_dts_1[dy]
+            value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *impure_dts.values())
+            measurements.append((value/norm).item())
 
         return torch.tensor(measurements)
 
@@ -3855,44 +3848,51 @@ class FermiSquareTPS(object):
 
         merged_gts = self.merged_tensors()
 
-        gts, gts_dagger = {}, {}
-        gts_envs = {}
         internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
         external_dims = (0, 3), (2, 3), (0, 1), (1, 2)
-        for i, c in enumerate(self._coords):
-            gts[c] = merged_gts[c]
-            gts_dagger[c] = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
-            # external bonds
-            envs = self.site_envs(c)
-            p, q = external_dims[i]
-            gts_envs[c] = envs[p], envs[q]
 
         pure_dt_strs = 'abcde,aA,dD,ABCDe->bBcC', 'abcde,Cc,dD,ABCDe->aAbB', 'abcde,aA,Bb,ABCDe->cCdD', 'abcde,Bb,Cc,ABCDe->aAdD'
         impure_dt_strs = 'abcde,aA,dD,eE,ABCDE->bBcC', 'abcde,Cc,dD,eE,ABCDE->aAbB', 'abcde,aA,Bb,eE,ABCDE->cCdD', 'abcde,Bb,Cc,eE,ABCDE->aAdD'
 
-        pure_dts, impure_dts_0, impure_dts_1 = {}, {}, {}
-        for i, c in enumerate(self._coords):
-            # print(i, c, pure_dt_strs[i], gts_envs[c])
-            pure_dts[c] = tp.gcontract(pure_dt_strs[i], gts_dagger[c], *gts_envs[c], gts[c])
-            impure_dts_0[c] = tp.gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_0, gts[c])
-            impure_dts_1[c] = tp.gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_1, gts[c])
-        # norm
-        norm = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *pure_dts.values())
-
+        # loop through four UCs
         measurements = []
-        temp_dts = deepcopy(pure_dts)
-        # repalce with an impure double tensor
-        temp_dts[(0, 0)] = impure_dts_0[(0, 0)]
-        temp_dts[(1, 1)] = impure_dts_1[(1, 1)]
-        value = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-        measurements.append((value/norm).item())
+        for d in self._coords:
+            dx = (d[0]+1) % self._nx, d[1]
+            dy = d[0], (d[1]+1) % self._ny
+            dxy = (d[0]+1) % self._nx, (d[1]+1) % self._ny
 
-        temp_dts = deepcopy(pure_dts)
-        # repalce with an impure double tensor
-        temp_dts[(0, 1)] = impure_dts_0[(0, 1)]
-        temp_dts[(1, 0)] = impure_dts_1[(1, 0)]
-        value = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-        measurements.append((value/norm).item())
+            cluster = d, dx, dy, dxy
+
+            gts, gts_dagger = {}, {}
+            gts_envs = {}
+            for i, c in enumerate(cluster):
+                gts[c] = merged_gts[c]
+                gts_dagger[c] = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
+                envs = self.site_envs(c)
+                p, q = external_dims[i]
+                gts_envs[c] = envs[p], envs[q]
+
+            pure_dts, impure_dts_0, impure_dts_1 = {}, {}, {}
+            for i, c in enumerate(cluster):
+                pure_dts[c] = tp.gcontract(pure_dt_strs[i], gts_dagger[c], *gts_envs[c], gts[c])
+                impure_dts_0[c] = tp.z2gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_0, gts[c])
+                impure_dts_1[c] = tp.z2gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op_1, gts[c])
+            
+            norm = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *pure_dts.values())
+
+            impure_dts = deepcopy(pure_dts)
+            # repalce with an impure double tensor
+            impure_dts[d] = impure_dts_0[d]
+            impure_dts[dxy] = impure_dts_1[dxy]
+            value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *impure_dts.values())
+            measurements.append((value/norm).item())
+
+            impure_dts = deepcopy(pure_dts)
+            # repalce with an impure double tensor
+            impure_dts[dx] = impure_dts_0[dx]
+            impure_dts[dy] = impure_dts_1[dy]
+            value = tp.z2gcontract('aAbB,bBcC,dDaA,dDcC->', *impure_dts.values())
+            measurements.append((value/norm).item())
 
         return torch.tensor(measurements)
 
