@@ -823,6 +823,7 @@ class FermiSquareTPS(object):
 
     def average_plquette_weights(self, c: tuple, mode='dominance', info=None):
         r'''
+
         Parameters
         ----------
         c: tuple[int], base coordinate of the plaquette
@@ -850,7 +851,7 @@ class FermiSquareTPS(object):
                 ses.append(t.blocks()[(0, 0)].diag())
                 sos.append(t.blocks()[(1, 1)].diag())
             se, so = 0.25*sum(ses), 0.25*sum(sos)
-            print('Parity average:', se, so)
+            print(info, 'Parity average:', se, so)
             new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
             new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
             self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
@@ -877,11 +878,82 @@ class FermiSquareTPS(object):
                     flags.append(False)
 
             sds_ave, sms_ave = 0.25*sum(sds), 0.25*sum(sms)
-            print('Dominance average:', sds_ave, sms_ave)
+            print(info, 'Dominance average:', sds_ave, sms_ave)
             self._link_tensors[c][0] = _build_bond_matrix(sds_ave, sms_ave, flags[0], cflag=lams[0].cflag)
             self._link_tensors[cx][1] = _build_bond_matrix(sds_ave, sms_ave, flags[1], cflag=lams[1].cflag)
             self._link_tensors[cy][0] = _build_bond_matrix(sds_ave, sms_ave, flags[2], cflag=lams[2].cflag)
             self._link_tensors[c][1] = _build_bond_matrix(sds_ave, sms_ave, flags[3], cflag=lams[3].cflag)
+
+        else:
+            raise ValueError('mode not matched!')
+
+        return 1
+
+    def average_all_weights(self, mode='dominance'):
+        r'''
+
+        Parameters
+        ----------
+        c: tuple[int], base coordinate of the plaquette
+        '''
+
+        def _build_bond_matrix(sd, sm, flag: bool, cflag: bool):
+
+            if flag:
+                new_blocks = {(0, 0):sd.diag(), (1, 1):sm.diag()}
+                new_shape = (sd.shape[0], sm.shape[0]), (sd.shape[0], sm.shape[0])
+            else:
+                new_blocks = {(0, 0):sm.diag(), (1, 1):se.diag()}
+                new_shape = (sm.shape[0], sd.shape[0]), (sm.shape[0], sd.shape[0])
+
+            return GTensor(dual=(0, 1), shape=new_shape, blocks=new_blocks, cflag=cflag)
+
+        if 'parity' == mode:
+            # directly averge two sectors
+            ses, sos = [], []
+            for c in self._coords:
+                for i in range(2):
+                    ses.append(self._link_tensors[c][i].blocks()[(0, 0)].diag())
+                    sos.append(self._link_tensors[c][i].blocks()[(1, 1)].diag())
+
+            se, so = 0.125*sum(ses), 0.125*sum(sos)
+            print('Parity average:', se, so)
+            new_blocks = {(0, 0):se.diag(), (1, 1):torch.so.diag()}
+            new_shape = (se.shape[0], so.shape[0]), (se.shape[0], so.shape[0])
+            cf = self._link_tensors[(0, 0)][0].cflag
+            temp = GTensor(dual=(0, 1), shape=new_shape, blocks=new_blocks, cflag=cf)
+            for c in self._coords:
+                for i in range(2):
+                    self._link_tensors[c][i] = temp
+
+        elif 'dominance' == mode:
+            # average by dominance parts
+            sds, sms = [], []
+            # mark the dominance in which sector
+            flags = []
+            for c in self._coords:
+                for i in range(2):
+                    se = self._link_tensors[c][i].blocks()[(0, 0)].diag()
+                    so = self._link_tensors[c][i].blocks()[(1, 1)].diag()
+                    # dominance in even
+                    if se[0].item() > (1.0-1E-13):
+                        sds.append(se)
+                        sms.append(so)
+                        flags.append(True)
+                    # dominance in odd
+                    elif so[0].item() > (1.0-1E-13):
+                        sds.append(so)
+                        sms.append(se)
+                        flags.append(False)
+
+            sds_ave, sms_ave = 0.125*sum(sds), 0.125*sum(sms)
+            print('Dominance average:', sds_ave, sms_ave)
+            n = 0
+            cf = self._link_tensors[(0, 0)][0].cflag
+            for c in self._coords:
+                for i in range(2):
+                    self._link_tensors[c][i] = _build_bond_matrix(sds_ave, sms_ave, flags[n], cflag=cf)
+                    n += 1
 
         else:
             raise ValueError('mode not matched!')
@@ -2271,7 +2343,9 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominance', info='ABD,ACD')
+            # average the bond weights in this plaquette
+            # self.average_plquette_weights(c, mode='dominance', info='ABD,ACD')
+            self.average_all_weights(mode='dominance')
 
             # starting from B
             # BAC
