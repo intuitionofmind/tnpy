@@ -266,7 +266,7 @@ class FermiSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -423,7 +423,7 @@ class FermiSquareTPS(object):
                     new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
                     self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-                if 'dominant' == average_weights:
+                if 'dominance' == average_weights:
                     # average by dominant part
                     lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
                     sds, sms = [], []
@@ -443,7 +443,7 @@ class FermiSquareTPS(object):
                     # flags = [True, False, True, False]
                     # flags = [False, True, False, True]
                     # print(flags)
-                    print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                    print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                     if flags[0]:
                         se, so = 0.25*sum(sds), 0.25*sum(sms)
                     else:
@@ -488,7 +488,7 @@ class FermiSquareTPS(object):
                 # flags = [True, False, True, False]
                 # flags = [False, True, False, True]
                 # print(flags)
-                print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                 '''
 
         return 1
@@ -505,7 +505,7 @@ class FermiSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -690,8 +690,8 @@ class FermiSquareTPS(object):
                     new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
                     self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-                if 'dominant' == average_weights:
-                    # average by dominant part
+                if 'dominance' == average_weights:
+                    # average by dominance part
                     lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
                     sds, sms = [], []
                     flags = []
@@ -710,7 +710,7 @@ class FermiSquareTPS(object):
                     # flags = [True, False, True, False]
                     # flags = [False, True, False, True]
                     # print(flags)
-                    print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                    print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                     if flags[0]:
                         se, so = 0.25*sum(sds), 0.25*sum(sms)
                     else:
@@ -821,72 +821,70 @@ class FermiSquareTPS(object):
 
         return mpos
 
-    def average_plquette_weights(self, c: tuple, mode='dominant', info=None):
+    def average_plquette_weights(self, c: tuple, mode='dominance', info=None):
+        r'''
+        Parameters
+        ----------
+        c: tuple[int], base coordinate of the plaquette
+        '''
+
+        def _build_bond_matrix(sd, sm, flag: bool, cflag: bool):
+
+            if flag:
+                new_blocks = {(0, 0):sd.diag(), (1, 1):sm.diag()}
+                new_shape = (sd.shape[0], sm.shape[0]), (sd.shape[0], sm.shape[0])
+            else:
+                new_blocks = {(0, 0):sm.diag(), (1, 1):se.diag()}
+                new_shape = (sm.shape[0], sd.shape[0]), (sm.shape[0], sd.shape[0])
+
+            return GTensor(dual=(0, 1), shape=new_shape, blocks=new_blocks, cflag=cflag)
 
         cx = (c[0]+1) % self._nx, c[1]
         cy = c[0], (c[1]+1) % self._ny
 
         if 'parity' == mode:
-            # direct averge two sectors, naively
+            # directly averge two sectors
             lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
             ses, sos = [], []
             for t in lams:
                 ses.append(t.blocks()[(0, 0)].diag())
                 sos.append(t.blocks()[(1, 1)].diag())
             se, so = 0.25*sum(ses), 0.25*sum(sos)
-            print(info, 'average parity:', se, so)
+            print('Parity average:', se, so)
             new_blocks = {(0, 0):torch.tensor(se).diag(), (1, 1):torch.tensor(so).diag()}
             new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
             self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-        elif 'dominant' == mode:
-            # average by dominant part
+        elif 'dominance' == mode:
+            # average by dominance parts
             lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
             sds, sms = [], []
+            # mark the dominance in which sector
             flags = []
             for t in lams:
                 se, so = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
                 print(se, so)
-                if se[0].item() > (1.0-1E-12):
+                # find the dominance sector
+                # dominance in even
+                if se[0].item() > (1.0-1E-13):
                     sds.append(se)
                     sms.append(so)
                     flags.append(True)
-                elif so[0].item() > (1.0-1E-12):
+                # dominance in odd
+                elif so[0].item() > (1.0-1E-13):
                     sds.append(so)
                     sms.append(se)
                     flags.append(False)
 
-            # flags = [True, False, True, False]
-            # flags = [False, True, False, True]
-            # print(flags)
-            print(info, 'average dominant:', 0.25*sum(sds), 0.25*sum(sms))
-            if flags[0]:
-                se, so = 0.25*sum(sds), 0.25*sum(sms)
-            else:
-                se, so = 0.25*sum(sms), 0.25*sum(sds)
-            new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-            self._link_tensors[c][0] = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
-            if flags[1]:
-                se, so = 0.25*sum(sds), 0.25*sum(sms)
-            else:
-                se, so = 0.25*sum(sms), 0.25*sum(sds)
-            new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-            self._link_tensors[cx][1] = GTensor(dual=(0, 1), shape=lams[1].shape, blocks=new_blocks, cflag=lams[1].cflag)
-            if flags[2]:
-                se, so = 0.25*sum(sds), 0.25*sum(sms)
-            else:
-                se, so = 0.25*sum(sms), 0.25*sum(sds)
-            new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-            self._link_tensors[cy][0] = GTensor(dual=(0, 1), shape=lams[2].shape, blocks=new_blocks, cflag=lams[2].cflag)
-            if flags[3]:
-                se, so = 0.25*sum(sds), 0.25*sum(sms)
-            else:
-                se, so = 0.25*sum(sms), 0.25*sum(sds)
-            new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
-            self._link_tensors[c][1] = GTensor(dual=(0, 1), shape=lams[3].shape, blocks=new_blocks, cflag=lams[3].cflag)
+            sds_ave, sms_ave = 0.25*sum(sds), 0.25*sum(sms)
+            print('Dominance average:', sds_ave, sms_ave)
+            self._link_tensors[c][0] = _build_bond_matrix(sds_ave, sms_ave, flags[0], cflag=lams[0].cflag)
+            self._link_tensors[cx][1] = _build_bond_matrix(sds_ave, sms_ave, flags[1], cflag=lams[1].cflag)
+            self._link_tensors[cy][0] = _build_bond_matrix(sds_ave, sms_ave, flags[2], cflag=lams[2].cflag)
+            self._link_tensors[c][1] = _build_bond_matrix(sds_ave, sms_ave, flags[3], cflag=lams[3].cflag)
 
         else:
-            print('mode is not matched')
+            raise ValueError('mode not matched!')
 
         return 1
 
@@ -902,7 +900,7 @@ class FermiSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -1239,7 +1237,7 @@ class FermiSquareTPS(object):
                     assert self._site_tensors[site].shape == bare_gts[i].shape
                     self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-                self.average_plquette_weights(c, mode='dominant', info='ABD,ACD')
+                self.average_plquette_weights(c, mode='dominance', info='ABD,ACD')
 
                 # starting from B
                 # BAC
@@ -1433,7 +1431,7 @@ class FermiSquareTPS(object):
                     assert self._site_tensors[site].shape == bare_gts[i].shape
                     self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-                self.average_plquette_weights(c, mode='dominant', info='BAC,BDC')
+                self.average_plquette_weights(c, mode='dominance', info='BAC,BDC')
 
                 # starting from D
                 # DBA
@@ -1623,7 +1621,7 @@ class FermiSquareTPS(object):
                     assert self._site_tensors[site].shape == bare_gts[i].shape
                     self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-                self.average_plquette_weights(c, mode='dominant', info='DBA,DCA')
+                self.average_plquette_weights(c, mode='dominance', info='DBA,DCA')
 
                 # starting from C
                 # CAB
@@ -1856,7 +1854,7 @@ class FermiSquareTPS(object):
                     assert self._site_tensors[site].shape == bare_gts[i].shape
                     self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-                self.average_plquette_weights(c, mode='dominant', info='CAB,CDB')
+                self.average_plquette_weights(c, mode='dominance', info='CAB,CDB')
 
         return 1
 
@@ -1872,7 +1870,7 @@ class FermiSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -2031,8 +2029,8 @@ class FermiSquareTPS(object):
                     new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
                     self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-                if 'dominant' == average_weights:
-                    # average by dominant part
+                if 'dominance' == average_weights:
+                    # average by dominance part
                     lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
                     sds, sms = [], []
                     flags = []
@@ -2051,7 +2049,7 @@ class FermiSquareTPS(object):
                     # flags = [True, False, True, False]
                     # flags = [False, True, False, True]
                     # print(flags)
-                    print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                    print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                     if flags[0]:
                         se, so = 0.25*sum(sds), 0.25*sum(sms)
                     else:
@@ -2096,7 +2094,7 @@ class FermiSquareTPS(object):
                 # flags = [True, False, True, False]
                 # flags = [False, True, False, True]
                 # print(flags)
-                print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                 '''
 
         return 1
@@ -2110,7 +2108,7 @@ class FermiSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -2140,9 +2138,9 @@ class FermiSquareTPS(object):
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
             # time evo operation
-            mgts[0] = tp.gcontract('ECe,abcde->abCcdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('AEBe,abcde->AaBbcdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('DEe,abcde->abcDdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('ECe,abcde->abCcdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('AEBe,abcde->AaBbcdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('DEe,abcde->abcDdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             # QR and LQ
@@ -2207,7 +2205,7 @@ class FermiSquareTPS(object):
             #  *0,B,DC,A
             cluster = [c, cy, cxy]
             external_bonds = (0, 2, 3), (0, 1), (1, 2, 3)
-            # te3_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
+            # time_evo_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -2216,9 +2214,9 @@ class FermiSquareTPS(object):
                 envs_inv.append([tp.linalg.ginv(envs[i][j]) for j in range(4)])
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
-            mgts[0] = tp.gcontract('EBe,abcde->aBbcdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('DECe,abcde->abCcDdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('AEe,abcde->AabcdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('EBe,abcde->aBbcdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('DECe,abcde->abCcDdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('AEe,abcde->AabcdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2273,7 +2271,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominant', info='ABD,ACD')
+            self.average_plquette_weights(c, mode='dominance', info='ABD,ACD')
 
             # starting from B
             # BAC
@@ -2293,9 +2291,9 @@ class FermiSquareTPS(object):
                 envs_inv.append([tp.linalg.ginv(envs[i][j]) for j in range(4)])
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
-            mgts[0] = tp.gcontract('EAe,abcde->AabcdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('CEBe,abcde->aBbCcdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('DEe,abcde->abcDdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('EAe,abcde->AabcdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('CEBe,abcde->aBbCcdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('DEe,abcde->abcDdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2367,9 +2365,9 @@ class FermiSquareTPS(object):
                 envs_inv.append([tp.linalg.ginv(envs[i][j]) for j in range(4)])
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
-            mgts[0] = tp.gcontract('EBe,abcde->aBbcdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('DEAe,abcde->AabcDdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('CEe,abcde->abCcdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('EBe,abcde->aBbcdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('DEAe,abcde->AabcDdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('CEe,abcde->abCcdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2425,7 +2423,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominant', info='BAC,BDC')
+            self.average_plquette_weights(c, mode='dominance', info='BAC,BDC')
 
             # starting from D
             # DBA
@@ -2444,9 +2442,9 @@ class FermiSquareTPS(object):
                 envs_inv.append([tp.linalg.ginv(envs[i][j]) for j in range(4)])
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
-            mgts[0] = tp.gcontract('EDe,abcde->abcDdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('BEAe,abcde->AaBbcdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('CEe,abcde->abCcdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('EDe,abcde->abcDdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('BEAe,abcde->AaBbcdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('CEe,abcde->abCcdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2516,9 +2514,9 @@ class FermiSquareTPS(object):
                 envs_inv.append([tp.linalg.ginv(envs[i][j]) for j in range(4)])
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
-            mgts[0] = tp.gcontract('EAe,abcde->AabcdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('CEDe,abcde->abCcDdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('BEe,abcde->aBbcdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('EAe,abcde->AabcdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('CEDe,abcde->abCcDdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('BEe,abcde->aBbcdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2572,7 +2570,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominant', info='DBA,DCA')
+            self.average_plquette_weights(c, mode='dominance', info='DBA,DCA')
 
             # starting from C
             # CAB
@@ -2593,9 +2591,9 @@ class FermiSquareTPS(object):
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
             # time evo operation
-            mgts[0] = tp.gcontract('EDe,abcde->abcDdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('BECe,abcde->aBbCcdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('AEe,abcde->AabcdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('EDe,abcde->abcDdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('BECe,abcde->aBbCcdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('AEe,abcde->AabcdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2667,9 +2665,9 @@ class FermiSquareTPS(object):
 
             mgts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(3)]
             # time evo operations
-            mgts[0] = tp.gcontract('ECe,abcde->abCcdE', te3_mpo[0], mgts[0])
-            mgts[1] = tp.gcontract('AEDe,abcde->AabcDdE', te3_mpo[1], mgts[1])
-            mgts[2] = tp.gcontract('BEe,abcde->aBbcdE', te3_mpo[2], mgts[2])
+            mgts[0] = tp.gcontract('ECe,abcde->abCcdE', time_evo_mpo[0], mgts[0])
+            mgts[1] = tp.gcontract('AEDe,abcde->AabcDdE', time_evo_mpo[1], mgts[1])
+            mgts[2] = tp.gcontract('BEe,abcde->aBbcdE', time_evo_mpo[2], mgts[2])
 
             rs, ls = [None]*2, [None]*2
             temp = mgts[0]
@@ -2726,7 +2724,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominant', info='CAB,CDB')
+            self.average_plquette_weights(c, mode='dominance', info='CAB,CDB')
 
         return 1
 
@@ -3992,7 +3990,7 @@ class FermiTwoLayerSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -4143,7 +4141,7 @@ class FermiTwoLayerSquareTPS(object):
                     new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
                     self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-                if 'dominant' == average_weights:
+                if 'dominance' == average_weights:
                     # average by dominant part
                     lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
                     sds, sms = [], []
@@ -4163,7 +4161,7 @@ class FermiTwoLayerSquareTPS(object):
                     # flags = [True, False, True, False]
                     # flags = [False, True, False, True]
                     # print(flags)
-                    print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                    print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                     if flags[0]:
                         se, so = 0.25*sum(sds), 0.25*sum(sms)
                     else:
@@ -4208,7 +4206,7 @@ class FermiTwoLayerSquareTPS(object):
                 # flags = [True, False, True, False]
                 # flags = [False, True, False, True]
                 # print(flags)
-                print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                 '''
 
         return 1
@@ -4225,7 +4223,7 @@ class FermiTwoLayerSquareTPS(object):
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
         average_weights: string,
-            'dominant', average by the dominant sector
+            'dominance', average by the dominance sector
             'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
@@ -4405,8 +4403,8 @@ class FermiTwoLayerSquareTPS(object):
                     new_lam = GTensor(dual=(0, 1), shape=lams[0].shape, blocks=new_blocks, cflag=lams[0].cflag)
                     self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1] = tuple([new_lam]*4)
 
-                if 'dominant' == average_weights:
-                    # average by dominant part
+                if 'dominance' == average_weights:
+                    # average by dominance part
                     lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
                     sds, sms = [], []
                     flags = []
@@ -4425,7 +4423,7 @@ class FermiTwoLayerSquareTPS(object):
                     # flags = [True, False, True, False]
                     # flags = [False, True, False, True]
                     # print(flags)
-                    print('average dominant:', 0.25*sum(sds), 0.25*sum(sms))
+                    print('average dominance:', 0.25*sum(sds), 0.25*sum(sms))
                     if flags[0]:
                         se, so = 0.25*sum(sds), 0.25*sum(sms)
                     else:
