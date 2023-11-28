@@ -935,6 +935,7 @@ class FermiSquareTPS(object):
                 for i in range(2):
                     se = self._link_tensors[c][i].blocks()[(0, 0)].diag()
                     so = self._link_tensors[c][i].blocks()[(1, 1)].diag()
+                    print(se, so)
                     # dominance in even
                     if se[0].item() > (1.0-1E-13):
                         sds.append(se)
@@ -2497,7 +2498,8 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominance', info='BAC,BDC')
+            # self.average_plquette_weights(c, mode='dominance', info='BAC,BDC')
+            self.average_all_weights(mode='dominance')
 
             # starting from D
             # DBA
@@ -2644,7 +2646,8 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominance', info='DBA,DCA')
+            # self.average_plquette_weights(c, mode='dominance', info='DBA,DCA')
+            self.average_all_weights(mode='dominance')
 
             # starting from C
             # CAB
@@ -2798,7 +2801,8 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            self.average_plquette_weights(c, mode='dominance', info='CAB,CDB')
+            # self.average_plquette_weights(c, mode='dominance', info='CAB,CDB')
+            self.average_all_weights(mode='dominance')
 
         return 1
 
