@@ -861,23 +861,23 @@ class FermiSquareTPS(object):
             lams = self._link_tensors[c][0], self._link_tensors[cx][1], self._link_tensors[cy][0], self._link_tensors[c][1]
             sds, sms = [], []
             # mark the dominance in which sector
-            flags = []
-            for t in lams:
+            flags = [True]*4
+            for i, t in enumerate(lams):
                 se, so = t.blocks()[(0, 0)].diag(), t.blocks()[(1, 1)].diag()
                 print(se, so)
                 # find the dominance sector
                 # dominance in even
-                if se[0].item() > (1.0-1E-13):
+                if se[0].item() > (1.0-1E-10):
                     sds.append(se)
                     sms.append(so)
-                    flags.append(True)
+                    flags[i] = True
                 # dominance in odd
-                elif so[0].item() > (1.0-1E-13):
+                elif so[0].item() > (1.0-1E-10):
                     sds.append(so)
                     sms.append(se)
-                    flags.append(False)
+                    flags[i] = False
 
-            sds_ave, sms_ave = 0.25*sum(sds), 0.25*sum(sms)
+            sds_ave, sms_ave = sum(sds)/len(sds), sum(sms)/len(sms)
             print(info, 'Dominance average:', sds_ave, sms_ave)
             self._link_tensors[c][0] = _build_bond_matrix(sds_ave, sms_ave, flags[0], cflag=lams[0].cflag)
             self._link_tensors[cx][1] = _build_bond_matrix(sds_ave, sms_ave, flags[1], cflag=lams[1].cflag)
@@ -930,25 +930,28 @@ class FermiSquareTPS(object):
             # average by dominance parts
             sds, sms = [], []
             # mark the dominance in which sector
-            flags = []
+            n = 0
+            flags = [True]*8
             for c in self._coords:
                 for i in range(2):
                     se = self._link_tensors[c][i].blocks()[(0, 0)].diag()
                     so = self._link_tensors[c][i].blocks()[(1, 1)].diag()
                     print(se, so)
                     # dominance in even
-                    if se[0].item() > (1.0-1E-13):
+                    if se[0].item() > (1.0-1E-10):
                         sds.append(se)
                         sms.append(so)
-                        flags.append(True)
+                        flags[n] = True
                     # dominance in odd
-                    elif so[0].item() > (1.0-1E-13):
+                    elif so[0].item() > (1.0-1E-10):
                         sds.append(so)
                         sms.append(se)
-                        flags.append(False)
+                        flags[n] = False
+                    n += 1
 
-            sds_ave, sms_ave = 0.125*sum(sds), 0.125*sum(sms)
+            sds_ave, sms_ave = sum(sds)/len(sds), sum(sms)/len(sms)
             print('Dominance average:', sds_ave, sms_ave)
+            print(flags)
             n = 0
             cf = self._link_tensors[(0, 0)][0].cflag
             for c in self._coords:
