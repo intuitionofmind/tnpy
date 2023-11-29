@@ -2175,7 +2175,7 @@ class FermiSquareTPS(object):
 
         return 1
 
-    def threebody_cluster_update(self, time_evo_mpo: list, sort_weights=False, average_weights=None):
+    def threebody_cluster_update(self, time_evo_mpo: list, sort_weights=False, average_weights=None, average_method='plaquette'):
         r'''
         Parameters
         ----------
@@ -2183,6 +2183,9 @@ class FermiSquareTPS(object):
         sort_weights: bool, 
             True: combine even and odd singular values together and sort then truncate
             False: truncation even and odd singular values seperately
+        average_method:
+            'plaquette', average around a plaquette
+            'all', average all bonds
         average_weights: string,
             'dominance', average by the dominance sector
             'parity', average by parity sectors
@@ -2281,7 +2284,6 @@ class FermiSquareTPS(object):
             #  *0,B,DC,A
             cluster = [c, cy, cxy]
             external_bonds = (0, 2, 3), (0, 1), (1, 2, 3)
-            # time_evo_mpo = self.threebody_mpo_factorize(time_evo3, internal_flags=(1, 1))
 
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -2348,8 +2350,13 @@ class FermiSquareTPS(object):
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             # average the bond weights in this plaquette
-            # self.average_plquette_weights(c, mode='dominance', info='ABD,ACD')
-            self.average_all_weights(mode='dominance')
+            if average_weights is not None:
+                if 'plaquette' == average_method:
+                    self.average_plquette_weights(c, mode=average_weights, info='ABD,ACD')
+                elif 'all' == average_method:
+                    self.average_all_weights(mode=average_weights)
+                else:
+                    raise ValueError('your average method is not valid')
 
             # starting from B
             # BAC
@@ -2422,7 +2429,6 @@ class FermiSquareTPS(object):
 
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                # print(bare_gts[i].dual, bare_gts[i].shape)
                 assert self._site_tensors[site].dual == bare_gts[i].dual
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
@@ -2501,8 +2507,13 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            # self.average_plquette_weights(c, mode='dominance', info='BAC,BDC')
-            self.average_all_weights(mode='dominance')
+            if average_weights is not None:
+                if 'plaquette' == average_method:
+                    self.average_plquette_weights(c, mode=average_weights, info='BAC,BDC')
+                elif 'all' == average_method:
+                    self.average_all_weights(mode=average_weights)
+                else:
+                    raise ValueError('your average method is not valid')
 
             # starting from D
             # DBA
@@ -2649,8 +2660,13 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            # self.average_plquette_weights(c, mode='dominance', info='DBA,DCA')
-            self.average_all_weights(mode='dominance')
+            if average_weights is not None:
+                if 'plaquette' == average_method:
+                    self.average_plquette_weights(c, mode=average_weights, info='DBA,DCA')
+                elif 'all' == average_method:
+                    self.average_all_weights(mode=average_weights)
+                else:
+                    raise ValueError('your average method is not valid')
 
             # starting from C
             # CAB
@@ -2804,8 +2820,13 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
-            # self.average_plquette_weights(c, mode='dominance', info='CAB,CDB')
-            self.average_all_weights(mode='dominance')
+            if average_weights is not None:
+                if 'plaquette' == average_method:
+                    self.average_plquette_weights(c, mode=average_weights, info='CAB,CDB')
+                elif 'all' == average_method:
+                    self.average_all_weights(mode=average_weights)
+                else:
+                    raise ValueError('your average method is not valid')
 
         return 1
 
