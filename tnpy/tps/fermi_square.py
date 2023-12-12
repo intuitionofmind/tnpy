@@ -878,6 +878,8 @@ class FermiSquareTPS(object):
 
             sds_ave, sms_ave = sum(sds)/len(sds), sum(sms)/len(sms)
             print('Dominance average:', sds_ave, sms_ave)
+            # flags = [True, True, True, True, True, True, True, True]
+            # flags = [True, False, True, False, True, False, True, False]
             print(flags)
             n = 0
             cf = self._link_tensors[(0, 0)][0].cflag
