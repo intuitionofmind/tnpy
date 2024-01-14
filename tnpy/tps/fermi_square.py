@@ -251,6 +251,142 @@ class FermiSquareTPS(object):
 
         return mgts
 
+    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=None):
+        r'''
+        simple update
+        average on 4 loops
+
+        Parameters
+        ----------
+        time_evo: GTensor, time evolution operator
+        sort_weights: bool, 
+            True: combine even and odd singular values together and sort then truncate
+            False: truncation even and odd singular values seperately
+        average_weights: string,
+            'dominance', average by the dominance sector
+            'parity', average by parity sectors
+        expand: tuple[int], optional
+            expand to larger D
+        '''
+
+        for c in self._coords:
+            cx = (c[0]+1) % self._nx, c[1]
+            cy = c[0], (c[1]+1) % self._ny
+            cxy = (c[0]+1) % self._nx, (c[1]+1) % self._ny
+
+            # X-direction
+            gts = [self._site_tensors[c], self._site_tensors[cx]]
+            # set cut-off
+            cf = sum(gts[0].shape[2])
+            envs = [self.mixed_site_envs(c, ex_bonds=(0, 1, 3)), self.mixed_site_envs(cx, ex_bonds=(1, 2, 3))]
+            # inverse of envs, for removing the envs later
+            envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
+            # absorb envs into GTensors
+            gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
+            # time evo operation
+            gts[0] = tp.gcontract('ECe,abcde->abCcdE', te_mpo[0], gts[0])
+            gts[1] = tp.gcontract('AEe,abcde->AabcdE', te_mpo[1], gts[1])
+            # QR and LQ factorizations
+            q, r = tp.linalg.gtqr(gts[0], group_dims=((0, 1, 4, 5), (2, 3)), qr_dims=(2, 0))
+            q, l = tp.linalg.super_gtqr(gts[1], group_dims=((2, 3, 4, 5), (0, 1)), qr_dims=(0, 2))
+            rl = tp.gcontract('abc,bcd->ad', r, l)
+            # overall cutoff
+            u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
+            # only left-conjugation of U and right-conjugation of V are valid under truncation
+            u_dagger = u.graded_conj(free_dims=(1,), side=0, reverse=True)
+            v_dagger = v.graded_conj(free_dims=(0,), side=1, reverse=True)
+
+            s_inv = tp.linalg.ginv(s)
+
+            # apply projectors
+            gts[0] = tp.gcontract('abCcde,Ccf,fg,gh->abhde', gts[0], l, v_dagger, s_inv)
+            gts[1] = tp.gcontract('hg,gf,fAa,Aabcde->hbcde', s_inv, u_dagger, r, gts[1])
+            # place identity on the connected bonds
+            envs_inv[0][2] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            envs_inv[1][0] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            # remove envs
+            gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs_inv[i]) for i in range(2)]
+
+            self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
+            self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
+            self._link_tensors[c][0] = (1.0/s.max())*s
+
+            # Y-direction
+            gts = [self._site_tensors[c], self._site_tensors[cy]]
+            # set cut-off
+            cf = sum(gts[0].shape[1])
+            envs = [self.mixed_site_envs(c, ex_bonds=(0, 2, 3)), self.mixed_site_envs(cy, ex_bonds=(0, 1, 2))]
+            envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
+            # absorb envs into GTensors
+            gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs[i]) for i in range(2)]
+            # time evo
+            gts[0] = tp.gcontract('EBe,abcde->aBbcdE', te_mpo[0], gts[0])
+            gts[1] = tp.gcontract('DEe,abcde->abcDdE', te_mpo[1], gts[1])
+
+            q, r = tp.linalg.gtqr(gts[0], group_dims=((0, 3, 4, 5), (1, 2)), qr_dims=(1, 0))
+            q, l = tp.linalg.super_gtqr(gts[1], group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
+            rl = tp.gcontract('abc,bcd->ad', r, l)
+            u, s, v = tp.linalg.gtsvd(rl, group_dims=((0,), (1,)), cut_off=cf)
+            # u_dagger = u.graded_conj(iso_dims=(1,), side=0)
+            # v_dagger = v.graded_conj(iso_dims=(0,), side=1)
+            u_dagger = u.graded_conj(free_dims=(1,), side=0, reverse=True)
+            v_dagger = v.graded_conj(free_dims=(0,), side=1, reverse=True)
+
+            s_inv = tp.linalg.ginv(s)
+
+            # apply projectors            
+            gts[0] = tp.gcontract('aBbcde,Bbf,fg,gh->ahcde', gts[0], l, v_dagger, s_inv)
+            gts[1] = tp.gcontract('hg,gf,fDd,abcDde->abche', s_inv, u_dagger, r, gts[1])
+            # place identity on the connected bonds
+            envs_inv[0][1] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            envs_inv[1][3] = GTensor.eye(dual=(0, 1), shape=s.shape)
+            # remove envs
+            gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', gts[i], *envs_inv[i]) for i in range(2)]
+
+            self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
+            self._site_tensors[cy] = (1.0/gts[1].max())*gts[1]
+            self._link_tensors[c][1] = (1.0/s.max())*s
+
+            # average
+            if average_weights is not None:
+                s_all, indices = [], []
+                shapes = []
+                for c in self._coords:
+                    for d in range(2):
+                        se = self._link_tensors[c][d].blocks()[(0, 0)].diag()
+                        so = self._link_tensors[c][d].blocks()[(1, 1)].diag()
+                        # join two sectors and sort
+                        s = torch.cat((se, so), dim=0)
+                        ss, si = torch.sort(s, descending=True, stable=True)
+                        s_all.append(ss)
+                        indices.append(si)
+                        shapes.append((se.shape[0], so.shape[0]))
+                        print(se.shape[0], so.shape[0])
+                        print(se, so)
+
+                s_mean = sum(s_all)/len(s_all)
+                print('sorted average:', s_mean)
+                cf = self._link_tensors[(0, 0)][0].cflag
+                n = 0
+                for c in self._coords:
+                    for d in range(2):
+                        new_se, new_so = torch.zeros(shapes[n][0]), torch.zeros(shapes[n][1])
+                        for k, i in enumerate(indices[n]):
+                            # even
+                            if i < shapes[n][0]:
+                                new_se[i] = s_mean[k]
+                            # odd
+                            else:
+                                j = i-shapes[n][0]
+                                new_so[j] = s_mean[k]
+
+                        new_blocks = {(0, 0):new_se.diag(), (1, 1):new_so.diag()}
+                        new_gt = GTensor(dual=(0, 1), shape=self._link_tensors[c][d].shape, blocks=new_blocks, cflag=cf)
+                        self._link_tensors[c][d] = new_gt
+                        n += 1
+
+        return 1
+
     def simple_update_proj(self, te_mpo: tuple, sort_weights=False, average_weights=None, average_method=None, expand=None):
         r'''
         simple update
@@ -794,12 +930,12 @@ class FermiSquareTPS(object):
                 print(se, so)
                 # find the dominance sector
                 # dominance in even
-                if se[0].item() > (1.0-1E-10):
+                if se[0].item() > (1.0-1E-12):
                     sds.append(se)
                     sms.append(so)
                     flags[i] = True
                 # dominance in odd
-                elif so[0].item() > (1.0-1E-10):
+                elif so[0].item() > (1.0-1E-12):
                     sds.append(so)
                     sms.append(se)
                     flags[i] = False
@@ -845,7 +981,7 @@ class FermiSquareTPS(object):
 
             se, so = 0.125*sum(ses), 0.125*sum(sos)
             print('Parity average:', se, so)
-            new_blocks = {(0, 0):se.diag(), (1, 1):torch.so.diag()}
+            new_blocks = {(0, 0):se.diag(), (1, 1):so.diag()}
             new_shape = (se.shape[0], so.shape[0]), (se.shape[0], so.shape[0])
             cf = self._link_tensors[(0, 0)][0].cflag
             temp = GTensor(dual=(0, 1), shape=new_shape, blocks=new_blocks, cflag=cf)
