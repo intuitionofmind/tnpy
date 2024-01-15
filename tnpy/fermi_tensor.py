@@ -120,7 +120,12 @@ class Z2gTensor(object):
         return the max value in all blocks
         '''
 
-        ms = [torch.max(t.abs()).item() for t in self._blocks.values()]
+        ms = []
+        for t in self._blocks.values():
+            if 0 == t.numel():
+                ms.append(0.0)
+            else:
+                ms.append(t.abs().max().item())
 
         return max(ms)
 
@@ -613,7 +618,7 @@ class GTensor(Z2gTensor):
 
     def conj(self, reverse=False):
         r'''
-        conjugation of GTensor
+        normal conjugation of a GTensor
 
         Parameters
         ----------
@@ -642,7 +647,7 @@ class GTensor(Z2gTensor):
 
     def graded_conj(self, free_dims=(), side=0, reverse=False):
         r'''
-        graded conjugation of GTensor
+        graded conjugation of a GTensor
 
         Parameters
         ----------
