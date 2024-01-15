@@ -251,7 +251,7 @@ class FermiSquareTPS(object):
 
         return mgts
 
-    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=None):
+    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=False, expand=None):
         r'''
         simple update
         average on 4 loops
@@ -277,13 +277,10 @@ class FermiSquareTPS(object):
             # X-direction
             gts = [self._site_tensors[c], self._site_tensors[cx]]
             # set cut-off
-            # cf = sum(gts[0].shape[2])
-            de = self._link_tensors[c][0].blocks()[(0, 0)].diag()
-            if de[0].item() > (1.0-1E-10):
-                cf = 8, 6
+            if expand is None:
+                cf = sum(gts[0].shape[2])
             else:
-                cf = 6, 8
-
+                cf = expand
             envs = [self.mixed_site_envs(c, ex_bonds=(0, 1, 3)), self.mixed_site_envs(cx, ex_bonds=(1, 2, 3))]
             # inverse of envs, for removing the envs later
             envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
@@ -320,12 +317,10 @@ class FermiSquareTPS(object):
             # Y-direction
             gts = [self._site_tensors[c], self._site_tensors[cy]]
             # set cut-off
-            # cf = sum(gts[0].shape[1])
-            de = self._link_tensors[c][1].blocks()[(0, 0)].diag()
-            if de[0].item() > (1.0-1E-10):
-                cf = 8, 6
+            if expand is None:
+                cf = sum(gts[0].shape[1])
             else:
-                cf = 6, 8
+                cf = expand
             envs = [self.mixed_site_envs(c, ex_bonds=(0, 2, 3)), self.mixed_site_envs(cy, ex_bonds=(0, 1, 2))]
             envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
             # absorb envs into GTensors
@@ -359,7 +354,7 @@ class FermiSquareTPS(object):
             self._link_tensors[c][1] = (1.0/s.max())*s
 
             # average
-            if average_weights is not None:
+            if average_weights:
                 s_all, indices = [], []
                 shapes = []
                 for c in self._coords:
