@@ -122,9 +122,7 @@ class Z2gTensor(object):
 
         ms = []
         for t in self._blocks.values():
-            if 0 == t.numel():
-                ms.append(0.0)
-            else:
+            if 0 != t.numel():
                 ms.append(t.abs().max().item())
 
         return max(ms)
