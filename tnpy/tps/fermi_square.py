@@ -251,7 +251,7 @@ class FermiSquareTPS(object):
 
         return mgts
 
-    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=False, expand=None):
+    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=False, expand=None, fixed_dims=False):
         r'''
         simple update
         average on 4 loops
@@ -259,14 +259,10 @@ class FermiSquareTPS(object):
         Parameters
         ----------
         time_evo: GTensor, time evolution operator
-        sort_weights: bool, 
-            True: combine even and odd singular values together and sort then truncate
-            False: truncation even and odd singular values seperately
-        average_weights: string,
-            'dominance', average by the dominance sector
-            'parity', average by parity sectors
+        average_weights: bool,
         expand: tuple[int], optional
             expand to larger D
+        fixed_dims: bool,
         '''
 
         for c in self._coords:
@@ -278,7 +274,10 @@ class FermiSquareTPS(object):
             gts = [self._site_tensors[c], self._site_tensors[cx]]
             # set cut-off
             if expand is None:
-                cf = sum(gts[0].shape[2])
+                if fixed_dims:
+                    cf = gts[0].shape[2]
+                else:
+                    cf = sum(gts[0].shape[2])
             else:
                 cf = expand
             envs = [self.mixed_site_envs(c, ex_bonds=(0, 1, 3)), self.mixed_site_envs(cx, ex_bonds=(1, 2, 3))]
@@ -318,7 +317,10 @@ class FermiSquareTPS(object):
             gts = [self._site_tensors[c], self._site_tensors[cy]]
             # set cut-off
             if expand is None:
-                cf = sum(gts[0].shape[1])
+                if fixed_dims:
+                    cf = gts[0].shape[1]
+                else:
+                    cf = sum(gts[0].shape[1])
             else:
                 cf = expand
             envs = [self.mixed_site_envs(c, ex_bonds=(0, 2, 3)), self.mixed_site_envs(cy, ex_bonds=(0, 1, 2))]
