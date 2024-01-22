@@ -904,18 +904,22 @@ class FermiSquareTPS(object):
         average sorted weights
         '''
 
-        s_all, indices = [], []
-        shapes = []
+        s_all, cuts = [], []
+        flags = []
         for c in self._coords:
             for d in range(2):
                 se = self._link_tensors[c][d].blocks()[(0, 0)].diag()
                 so = self._link_tensors[c][d].blocks()[(1, 1)].diag()
                 # join two sectors and sort
-                s = torch.cat((se, so), dim=0)
-                ss, si = torch.sort(s, descending=True, stable=True)
-                s_all.append(ss)
-                indices.append(si)
-                shapes.append((se.shape[0], so.shape[0]))
+                if se[0].item() > so[0].item():
+                    s = torch.cat((se, so), dim=0)
+                    flags.append(True)
+                    cuts.append(se.shape[0])
+                else:
+                    s = torch.cat((so, se), dim=0)
+                    flags.append(False)
+                    cuts.append(so.shape[0])
+                s_all.append(s)
                 print(se.shape[0], so.shape[0], se, so)
 
         s_mean = sum(s_all)/len(s_all)
@@ -924,15 +928,12 @@ class FermiSquareTPS(object):
         n = 0
         for c in self._coords:
             for d in range(2):
-                new_se, new_so = torch.zeros(shapes[n][0]), torch.zeros(shapes[n][1])
-                for k, i in enumerate(indices[n]):
-                    # even
-                    if i < shapes[n][0]:
-                        new_se[i] = s_mean[k]
-                    # odd
-                    else:
-                        j = i-shapes[n][0]
-                        new_so[j] = s_mean[k]
+                if flags[n]:
+                    new_se = s_mean[:cuts[n]].clone()
+                    new_so = s_mean[cuts[n]:].clone()
+                else:
+                    new_so = s_mean[:cuts[n]].clone()
+                    new_se = s_mean[cuts[n]:].clone()
 
                 new_blocks = {(0, 0):new_se.diag(), (1, 1):new_so.diag()}
                 new_gt = GTensor(dual=(0, 1), shape=self._link_tensors[c][d].shape, blocks=new_blocks, cflag=cf)
