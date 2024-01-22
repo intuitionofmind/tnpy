@@ -251,7 +251,7 @@ class FermiSquareTPS(object):
 
         return mgts
 
-    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=None, expand=None, fixed_dims=False):
+    def simple_update_proj_sort(self, te_mpo: tuple, average_weights=None, expand=None, fixed_dims=False, ifprint=False):
         r'''
         simple update
         average on 4 loops
@@ -357,48 +357,9 @@ class FermiSquareTPS(object):
 
             # average
             if 'sort' == average_weights:
-                self.sorted_average_weights(c)
+                self.sorted_average_weights(c, ifprint=ifprint)
             elif 'direct' == average_weights:
-                self.direct_average_weights(c)
-
-            '''
-            if average_weights:
-                s_all, indices = [], []
-                shapes = []
-                for c in self._coords:
-                    for d in range(2):
-                        se = self._link_tensors[c][d].blocks()[(0, 0)].diag()
-                        so = self._link_tensors[c][d].blocks()[(1, 1)].diag()
-                        # join two sectors and sort
-                        s = torch.cat((se, so), dim=0)
-                        ss, si = torch.sort(s, descending=True, stable=True)
-                        s_all.append(ss)
-                        indices.append(si)
-                        shapes.append((se.shape[0], so.shape[0]))
-                        print(se.shape[0], so.shape[0])
-                        print(se, so)
-
-                s_mean = sum(s_all)/len(s_all)
-                print('sorted average:', s_mean)
-                cf = self._link_tensors[(0, 0)][0].cflag
-                n = 0
-                for c in self._coords:
-                    for d in range(2):
-                        new_se, new_so = torch.zeros(shapes[n][0]), torch.zeros(shapes[n][1])
-                        for k, i in enumerate(indices[n]):
-                            # even
-                            if i < shapes[n][0]:
-                                new_se[i] = s_mean[k]
-                            # odd
-                            else:
-                                j = i-shapes[n][0]
-                                new_so[j] = s_mean[k]
-
-                        new_blocks = {(0, 0):new_se.diag(), (1, 1):new_so.diag()}
-                        new_gt = GTensor(dual=(0, 1), shape=self._link_tensors[c][d].shape, blocks=new_blocks, cflag=cf)
-                        self._link_tensors[c][d] = new_gt
-                        n += 1
-            '''
+                self.direct_average_weights(c, ifprint=ifprint)
 
         return 1
 
@@ -899,7 +860,7 @@ class FermiSquareTPS(object):
 
         return mpos
 
-    def sorted_average_weights(self, c: tuple):
+    def sorted_average_weights(self, c: tuple, ifprint=False):
         r'''
         average sorted weights
         '''
@@ -920,10 +881,12 @@ class FermiSquareTPS(object):
                     flags.append(False)
                     cuts.append(so.shape[0])
                 s_all.append(s)
-                print(se.shape[0], so.shape[0], se, so)
+                if ifprint:
+                    print(se.shape[0], so.shape[0], se, so)
 
         s_mean = sum(s_all)/len(s_all)
-        print('sorted average:', s_mean)
+        if ifprint:
+            print('sorted average:', s_mean)
         cf = self._link_tensors[(0, 0)][0].cflag
         n = 0
         for c in self._coords:
@@ -942,7 +905,7 @@ class FermiSquareTPS(object):
 
         return 1
 
-    def direct_average_weights(self, c: tuple):
+    def direct_average_weights(self, c: tuple, ifprint=False):
         r'''
         directly average bond weights
         '''
@@ -960,7 +923,8 @@ class FermiSquareTPS(object):
                 print(se.shape[0], so.shape[0], se, so)
 
         s_mean = sum(s_all)/len(s_all)
-        print('direct average:', s_mean)
+        if ifprint:
+            print('direct average:', s_mean)
         cf = self._link_tensors[(0, 0)][0].cflag
         n = 0
         for c in self._coords:
