@@ -9,7 +9,7 @@ import pickle as pk
 import torch
 torch.set_default_dtype(torch.float64)
 import torch.nn.functional as tnf
-torch.set_printoptions(precision=8)
+torch.set_printoptions(precision=5)
 
 import tnpy as tp
 from tnpy import Z2gTensor, GTensor 
@@ -872,14 +872,23 @@ class FermiSquareTPS(object):
                 se = self._link_tensors[c][d].blocks()[(0, 0)].diag()
                 so = self._link_tensors[c][d].blocks()[(1, 1)].diag()
                 # join two sectors and sort
-                if se[0].item() > so[0].item():
-                    s = torch.cat((se, so), dim=0)
-                    flags.append(True)
-                    cuts.append(se.shape[0])
-                else:
+                if 0 != se.numel() and 0 != so.numel():
+                    if se[0].item() > so[0].item():
+                        s = torch.cat((se, so), dim=0)
+                        flags.append(True)
+                        cuts.append(se.shape[0])
+                    else:
+                        s = torch.cat((so, se), dim=0)
+                        flags.append(False)
+                        cuts.append(so.shape[0])
+                elif 0 == se.numel():
                     s = torch.cat((so, se), dim=0)
                     flags.append(False)
                     cuts.append(so.shape[0])
+                elif 0 == so.numel():
+                    s = torch.cat((se, so), dim=0)
+                    flags.append(True)
+                    cuts.append(se.shape[0])
                 s_all.append(s)
                 if ifprint:
                     print(se.shape[0], so.shape[0], se, so)
