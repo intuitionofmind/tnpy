@@ -929,7 +929,8 @@ class FermiSquareTPS(object):
                 s = torch.cat((se, so), dim=0)
                 s_all.append(s)
                 shapes.append((se.shape[0], so.shape[0]))
-                print(se.shape[0], so.shape[0], se, so)
+                if ifprint:
+                    print(se.shape[0], so.shape[0], se, so)
 
         s_mean = sum(s_all)/len(s_all)
         if ifprint:
