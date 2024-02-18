@@ -311,7 +311,11 @@ class FermiSquareTPS(object):
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
-            self._link_tensors[c][0] = (1.0/s.max())*s
+            new_lt = (1.0/s.max())*s
+            if ifprint:
+                diff = new_lt-self._link_tensors[c][0]
+                print('Lambda changing:', abs(diff), sum(abs(diff)))
+            self._link_tensors[c][0] = new_lt
 
             # Y-direction
             gts = [self._site_tensors[c], self._site_tensors[cy]]
@@ -353,7 +357,11 @@ class FermiSquareTPS(object):
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cy] = (1.0/gts[1].max())*gts[1]
-            self._link_tensors[c][1] = (1.0/s.max())*s
+            new_lt = (1.0/s.max())*s
+            if ifprint:
+                diff = new_lt-self._link_tensors[c][0]
+                print('Lambda changing:', abs(diff), sum(abs(diff)))
+            self._link_tensors[c][1] = new_lt
 
             # average
             if 'sort' == average_weights:
