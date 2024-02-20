@@ -363,7 +363,7 @@ class FermiSquareTPS(object):
             if ifprint:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
-                    diff += (self._link_tensors[c][0].blocks()[key]-val).norm()
+                    diff += (self._link_tensors[c][1].blocks()[key]-val).norm()
                 print('Y Lambda changing:', diff.item())
             self._link_tensors[c][1] = new_lt
 
