@@ -1,9 +1,18 @@
+from copy import deepcopy
 import itertools
 import math
+import numpy as np
+import scipy
 import opt_einsum as oe
+import pickle as pk
 
 import torch
 torch.set_default_dtype(torch.float64)
+import torch.nn.functional as tnf
+torch.set_printoptions(precision=5)
+
+import tnpy as tp
+from tnpy import Z2gTensor, GTensor
 
 class FermiMPS(object):
     r'''
@@ -27,6 +36,11 @@ class FermiMPS(object):
     def size(self):
         return self._size
 
+    def test(self):
+        print('test')
+
+        return 1
+
     @classmethod
     def rand(cls, n: int, dual: tuple, shape: tuple, cflag=True):
         r'''
@@ -39,7 +53,7 @@ class FermiMPS(object):
         shape, tuple[tuple],
         '''
 
-        gts=[]
+        gts = []
         for i in range(n):
             gts.append(GTensor.rand(dual, shape, cflag))
 
@@ -48,7 +62,7 @@ class FermiMPS(object):
     @classmethod
     def rand_obc(cls, n: int, dual: tuple, max_shape: tuple, cflag=True):
         r'''
-        randomly generate a fMPS
+        randomly generate a fMPS with open boundary condition
 
         Parameters
         ----------
