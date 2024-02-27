@@ -147,7 +147,10 @@ class Z2gTensor(object):
             # the structure tensor condition
             if parity == sum(q) & 1:
                 block_shape = [shape[i][p] for i, p in enumerate(q)]
-                blocks[q] = torch.rand(block_shape)
+                if cflag:
+                    blocks[q] = torch.rand(block_shape)+1.j*torch.rand(block_shape)
+                else:
+                    blocks[q] = torch.rand(block_shape)
 
         return cls(dual, shape, blocks, cflag, info)
 
@@ -574,7 +577,10 @@ class GTensor(Z2gTensor):
             # the structure tensor condition
             if 0 == sum(q) & 1:
                 block_shape = [shape[i][v] for i, v in enumerate(q)]
-                blocks[q] = torch.rand(block_shape)
+                if cflag:
+                    blocks[q] = torch.rand(block_shape)+1.j*torch.rand(block_shape)
+                else:
+                    blocks[q] = torch.rand(block_shape)
 
         return cls(dual, shape, blocks, cflag, info)
 
@@ -977,7 +983,7 @@ class GTensor(Z2gTensor):
         blocks = dict(blocks_e)
         blocks.update(blocks_o)
 
-        return cls(dual, shape, blocks, cflag, info)
+        return cls(dual=dual, shape=shape, blocks=blocks, cflag=cflag, info=info)
 
     @classmethod
     def extract_blocks(cls, dt, dual: tuple, shape: tuple, cflag=False, info=None):
@@ -1011,7 +1017,7 @@ class GTensor(Z2gTensor):
 
                 blocks[q] = dt[tuple(ss)]
 
-        return cls(dual, shape, blocks, cflag, info)
+        return cls(dual=dual, shape=shape, blocks=blocks, cflag=cflag, info=info)
 
 # ----------------------------------
 # module-level functions for fermi tensor
