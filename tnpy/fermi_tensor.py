@@ -639,9 +639,9 @@ class GTensor(Z2gTensor):
 
         # permute back to the original order if needed
         if reverse:
-            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks)
+            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, cflag=self._cflag)
         else:
-            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks).permute(dims)
+            return GTensor(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, cflag=self._cflag).permute(dims)
 
     def graded_conj(self, free_dims=(), side=0, reverse=False):
         r'''
@@ -740,7 +740,7 @@ class GTensor(Z2gTensor):
             new_q, sign = self.permute_qnums(q, dims)
             new_blocks[new_q] = sign*t.permute(dims)
 
-        return GTensor(new_dual, new_shape, new_blocks, self._info)
+        return GTensor(dual=new_dual, shape=new_shape, blocks=new_blocks, cflag=self._cflag, info=self._info)
 
     def fuse_bonds(self, bonds: tuple, pos=None, sub_dims=None):
         r'''
