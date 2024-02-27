@@ -391,7 +391,7 @@ class Z2gTensor(object):
         if 0 == len(new_dual):
             return new_blocks[()]
         else:
-            return cls(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, cflag=False, info=info)
+            return cls(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, cflag=args[1].cflag, info=info)
 
 class GTensor(Z2gTensor):
     r'''
