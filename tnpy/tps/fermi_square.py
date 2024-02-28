@@ -312,7 +312,7 @@ class FermiSquareTPS(object):
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
             new_lt = (1.0/s.max())*s
-            if ifprint:
+            if ifprint and None == expand:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
                     diff += (self._link_tensors[c][0].blocks()[key]-val).norm()
@@ -360,7 +360,7 @@ class FermiSquareTPS(object):
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cy] = (1.0/gts[1].max())*gts[1]
             new_lt = (1.0/s.max())*s
-            if ifprint:
+            if ifprint and None == expand:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
                     diff += (self._link_tensors[c][1].blocks()[key]-val).norm()
