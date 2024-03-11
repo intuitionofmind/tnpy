@@ -249,7 +249,7 @@ class Z2gTensor(object):
         return Z2gTensor(new_dual, new_shape, new_blocks, self._parity, self._info)
 
     @classmethod
-    def contract(cls, *args: any, info=None):
+    def contract(cls, *args: any, bosonic_dims=None, info=None):
         r'''
         contract
         powered by 'opt_einsum'
@@ -259,6 +259,8 @@ class Z2gTensor(object):
         ----------
         args[0]: contraction string, MUST specify the output string with '->'
         args[1], args[2], ...: Z2gTensor, tensors to be contracted
+        bosonic_dims: list[str] or tuple[str]
+        info:
 
         Returns
         -------
@@ -338,7 +340,7 @@ class Z2gTensor(object):
         uncontracted_str = ''
         for c in fused_str:
             # duplicate characters
-            if 2 == fused_str.count(c):
+            if 2 == fused_str.count(c) and c not in bosonic_dims:
                 first = fused_str.find(c)
                 second = fused_str.find(c, first+1)
                 # if the second is found
@@ -386,6 +388,7 @@ class Z2gTensor(object):
                 block = oe.contract(oe_str, *block_tensors, backend='torch')
                 assert bare.shape == block.shape, 'shape of contracted block not correct'
                 new_blocks[new_qs] = new_blocks.get(new_qs, bare)+c_sign*p_sign*block
+
                 # print(fused_qs, fused_dual, new_qs, c_sign, p_sign, block)
 
         if 0 == len(new_dual):
