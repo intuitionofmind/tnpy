@@ -249,7 +249,7 @@ class Z2gTensor(object):
         return Z2gTensor(new_dual, new_shape, new_blocks, self._parity, self._info)
 
     @classmethod
-    def contract(cls, *args: any, bosonic_dims=None, info=None):
+    def contract(cls, *args: any, bosonic_dims=(), info=None):
         r'''
         contract
         powered by 'opt_einsum'
