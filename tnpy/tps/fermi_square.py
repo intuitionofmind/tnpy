@@ -262,7 +262,7 @@ class FermiSquareTPS(object):
         average_weights: bool,
         expand: tuple[int], optional
             expand to larger D
-        fixed_dims: bool,
+        fixed_dims: bool, if the cut-off dim fixed or not
         '''
 
         for c in self._coords:
@@ -311,12 +311,14 @@ class FermiSquareTPS(object):
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
+
             new_lt = (1.0/s.max())*s
             if ifprint and None == expand:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
                     diff += (self._link_tensors[c][0].blocks()[key]-val).norm()
                 print('X Lambda changing:', diff.item())
+
             self._link_tensors[c][0] = new_lt
 
             # Y-direction
@@ -359,12 +361,14 @@ class FermiSquareTPS(object):
 
             self._site_tensors[c] = (1.0/gts[0].max())*gts[0]
             self._site_tensors[cy] = (1.0/gts[1].max())*gts[1]
+
             new_lt = (1.0/s.max())*s
             if ifprint and None == expand:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
                     diff += (self._link_tensors[c][1].blocks()[key]-val).norm()
                 print('Y Lambda changing:', diff.item())
+
             self._link_tensors[c][1] = new_lt
 
             # average
@@ -2324,7 +2328,7 @@ class FermiSquareTPS(object):
 
         return 1
 
-    def threebody_cluster_update(self, time_evo_mpo: list, sort_weights=False, average_weights=None, average_method='plaquette'):
+    def threebody_cluster_update(self, time_evo_mpo: list, expand=None, fixed_dims=False, average_weights=None, ifprint=False):
         r'''
         Parameters
         ----------
@@ -2336,8 +2340,6 @@ class FermiSquareTPS(object):
             'plaquette', average around a plaquette
             'all', average all bonds
         average_weights: string,
-            'dominance', average by the dominance sector
-            'parity', average by parity sectors
         expand: tuple[int], optional
             expand to larger D
         '''
@@ -2359,6 +2361,15 @@ class FermiSquareTPS(object):
             external_bonds = (0, 1, 3), (2, 3), (0, 1, 2)
 
             gts = [self._site_tensors[site] for site in cluster]
+
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[2]
+                else:
+                    cf = sum(gts[0].shape[2])
+            else:
+                cf = expand
+
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
             envs_inv = []
             for i in range(3):
@@ -2385,12 +2396,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('AaBbcde,Bbf->Aafcde', mgts[1], l)
             q, l = tp.linalg.super_gtqr(temp, group_dims=((2, 3, 4, 5), (0, 1)), qr_dims=(0, 2))
             ls[0] = l
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[2])
-            else:
-                cf = gts[0].shape[2][0], gts[0].shape[2][1]
 
             ss = []
             # R: bond left; L: bond right
@@ -2434,6 +2439,14 @@ class FermiSquareTPS(object):
             cluster = [c, cy, cxy]
             external_bonds = (0, 2, 3), (0, 1), (1, 2, 3)
 
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[1]
+                else:
+                    cf = sum(gts[0].shape[1])
+            else:
+                cf = expand
+
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
             envs_inv = []
@@ -2459,12 +2472,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('abCcDde,Ccf->abfDde', mgts[1], l)
             q, l = tp.linalg.super_gtqr(temp, group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
             ls[0] = l
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[2])
-            else:
-                cf = gts[0].shape[2][0], gts[0].shape[2][1]
 
             ss = []
             prs, pls = [], []
@@ -2498,6 +2505,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
+            '''
             # average the bond weights in this plaquette
             if average_weights is not None:
                 if 'plaquette' == average_method:
@@ -2506,6 +2514,7 @@ class FermiSquareTPS(object):
                     self.average_all_weights(mode=average_weights)
                 else:
                     raise ValueError('your average method is not valid')
+            '''
 
             # starting from B
             # BAC
@@ -2517,6 +2526,14 @@ class FermiSquareTPS(object):
             # 0*--<--*1, A,CB,D
             cluster = [cx, c, cy]
             external_bonds = (1, 2, 3), (0, 3), (0, 1, 2)
+
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[3]
+                else:
+                    cf = sum(gts[0].shape[3])
+            else:
+                cf = expand
 
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -2543,12 +2560,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('aBbCcde,Bbf->afCcde', mgts[1], l)
             q, r = tp.linalg.gtqr(temp, group_dims=((0, 1, 4, 5), (2, 3)), qr_dims=(2, 0))
             rs[0] = r
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[0])
-            else:
-                cf = gts[0].shape[0][0], gts[0].shape[0][1]
 
             ss = []
             prs, pls = [], []
@@ -2591,6 +2602,14 @@ class FermiSquareTPS(object):
             cluster = [cx, cxy, cy]
             external_bonds = (0, 2, 3), (1, 2), (0, 1, 3)
 
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[2]
+                else:
+                    cf = sum(gts[0].shape[2])
+            else:
+                cf = expand
+
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
             envs_inv = []
@@ -2616,12 +2635,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('fAa,AabcDde->fbcDde', r, mgts[1])
             q, l = tp.linalg.super_gtqr(temp, group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
             ls[0] = l
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[1])
-            else:
-                cf = gts[0].shape[1][0], gts[0].shape[1][1]
 
             ss = []
             prs, pls = [], []
@@ -2656,6 +2669,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
+            '''
             if average_weights is not None:
                 if 'plaquette' == average_method:
                     self.average_plquette_weights(c, mode=average_weights, info='BAC,BDC')
@@ -2663,6 +2677,7 @@ class FermiSquareTPS(object):
                     self.average_all_weights(mode=average_weights)
                 else:
                     raise ValueError('your average method is not valid')
+            '''
 
             # starting from D
             # DBA
@@ -2673,6 +2688,14 @@ class FermiSquareTPS(object):
             # 0*-<-*1
             cluster = [cxy, cx, c]
             external_bonds = (0, 1, 2), (2, 3), (0, 1, 3)
+
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[3]
+                else:
+                    cf = sum(gts[0].shape[3])
+            else:
+                cf = expand
 
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -2698,12 +2721,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('fAa,AaBbcde->fBbcde', r, mgts[1])
             q, r = tp.linalg.gtqr(temp, group_dims=((0, 3, 4, 5), (1, 2)), qr_dims=(1, 0))
             rs[0] = r
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[3])
-            else:
-                cf = gts[0].shape[3][0], gts[0].shape[3][1]
 
             ss = []
             prs, pls = [], []
@@ -2746,6 +2763,15 @@ class FermiSquareTPS(object):
             cluster = [cxy, cy, c]
             external_bonds = (1, 2, 3), (0, 1), (0, 2, 3)
 
+            # set cut-off
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[0]
+                else:
+                    cf = sum(gts[0].shape[0])
+            else:
+                cf = expand
+
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
             envs_inv = []
@@ -2770,12 +2796,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('fDd,abCcDde->abCcfe', r, mgts[1])
             q, r = tp.linalg.gtqr(temp, group_dims=((0, 1, 4, 5), (2, 3)), qr_dims=(2, 0))
             rs[0] = r
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[0])
-            else:
-                cf = gts[0].shape[0][0], gts[0].shape[0][1]
 
             ss = []
             prs, pls = [], []
@@ -2809,6 +2829,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
+            '''
             if average_weights is not None:
                 if 'plaquette' == average_method:
                     self.average_plquette_weights(c, mode=average_weights, info='DBA,DCA')
@@ -2816,6 +2837,7 @@ class FermiSquareTPS(object):
                     self.average_all_weights(mode=average_weights)
                 else:
                     raise ValueError('your average method is not valid')
+            '''
 
             # starting from C
             # CAB
@@ -2827,6 +2849,14 @@ class FermiSquareTPS(object):
             # 0*--<--*1
             cluster = [cy, c, cx]
             external_bonds = (0, 1, 2), (0, 3), (1, 2, 3)
+
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[3]
+                else:
+                    cf = sum(gts[0].shape[3])
+            else:
+                cf = expand
 
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
@@ -2853,12 +2883,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('aBbCcde,Ccf->aBbfde', mgts[1], l)
             q, r = tp.linalg.gtqr(temp, group_dims=((0, 3, 4, 5), (1, 2)), qr_dims=(1, 0))
             rs[0] = r
-
-           # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[3])
-            else:
-                cf = gts[0].shape[3][0], gts[0].shape[3][1]
 
             ss = []
             prs, pls = [], []
@@ -2902,6 +2926,14 @@ class FermiSquareTPS(object):
             cluster = [cy, cxy, cx]
             external_bonds = (0, 1, 3), (1, 2), (0, 2, 3)
 
+            if expand is None:
+                if fixed_dims:
+                    cf = gts[0].shape[2]
+                else:
+                    cf = sum(gts[0].shape[2])
+            else:
+                cf = expand
+
             gts = [self._site_tensors[site] for site in cluster]
             envs = [self.mixed_site_envs(site, ex_bonds=ebs) for site, ebs in zip(cluster, external_bonds)]
             envs_inv = []
@@ -2927,12 +2959,6 @@ class FermiSquareTPS(object):
             temp = tp.gcontract('fDd,AabcDde->Aabcfe', r, mgts[1])
             q, l = tp.linalg.super_gtqr(temp, group_dims=((2, 3, 4, 5), (0, 1)), qr_dims=(0, 2))
             ls[0] = l
-
-            # set two kinds of cut-off
-            if sort_weights:
-                cf = sum(gts[0].shape[2])
-            else:
-                cf = gts[0].shape[2][0], gts[0].shape[2][1]
 
             ss = []
             prs, pls = [], []
@@ -2969,6 +2995,7 @@ class FermiSquareTPS(object):
                 assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
+            '''
             if average_weights is not None:
                 if 'plaquette' == average_method:
                     self.average_plquette_weights(c, mode=average_weights, info='CAB,CDB')
@@ -2976,6 +3003,13 @@ class FermiSquareTPS(object):
                     self.average_all_weights(mode=average_weights)
                 else:
                     raise ValueError('your average method is not valid')
+            '''
+
+            # average
+            if 'sort' == average_weights:
+                self.sorted_average_weights(c, ifprint=ifprint)
+            elif 'direct' == average_weights:
+                self.direct_average_weights(c, ifprint=ifprint)
 
         return 1
 
