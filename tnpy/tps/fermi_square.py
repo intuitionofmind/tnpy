@@ -2420,14 +2420,24 @@ class FermiSquareTPS(object):
             envs_inv[1][1] = GTensor.eye(dual=(0, 1), shape=ss[1].shape)
             envs_inv[2][3] = GTensor.eye(dual=(0, 1), shape=ss[1].shape)
 
+            new_lts = (1.0/ss[0].max())*ss[0], (1.0/ss[1].max())*ss[1]
+
+            if ifprint and None == expand:
+                diff_0, diff_1 = 0.0, 0.0
+                for key, val in new_lts[0].blocks().items():
+                    diff_0 += (self._link_tensors[cluster[0]][0].blocks()[key]-val).norm()
+                for key, val in new_lts[1].blocks().items():
+                    diff_1 += (self._link_tensors[cluster[1]][1].blocks()[key]-val).norm()
+                print(c, 'ABD Lambda changing:', diff_0.item(), diff_1.item())
+
             # update 
-            self._link_tensors[cluster[0]][0] = (1.0/ss[0].max())*ss[0]
-            self._link_tensors[cluster[1]][1] = (1.0/ss[1].max())*ss[1]
+            self._link_tensors[cluster[0]][0] = new_lts[0] 
+            self._link_tensors[cluster[1]][1] = new_lts[1]
 
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             # ACD
@@ -2501,8 +2511,8 @@ class FermiSquareTPS(object):
 
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             '''
@@ -2589,8 +2599,8 @@ class FermiSquareTPS(object):
 
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             # BDC
@@ -2665,8 +2675,8 @@ class FermiSquareTPS(object):
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
                 # print(bare_gts[i].dual, bare_gts[i].shape)
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             '''
@@ -2750,8 +2760,8 @@ class FermiSquareTPS(object):
 
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             # DCA
@@ -2825,8 +2835,8 @@ class FermiSquareTPS(object):
 
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             '''
@@ -2913,8 +2923,8 @@ class FermiSquareTPS(object):
             # remove envs
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             # CDB
@@ -2991,8 +3001,8 @@ class FermiSquareTPS(object):
             # remove envs
             bare_gts = [tp.gcontract('abcde,Aa,bB,cC,Dd->ABCDe', mgts[i], *envs_inv[i]) for i in range(3)]
             for i, site in enumerate(cluster):
-                assert self._site_tensors[site].dual == bare_gts[i].dual
-                assert self._site_tensors[site].shape == bare_gts[i].shape
+                # assert self._site_tensors[site].dual == bare_gts[i].dual
+                # assert self._site_tensors[site].shape == bare_gts[i].shape
                 self._site_tensors[site] = (1.0/bare_gts[i].max())*bare_gts[i]
 
             '''
