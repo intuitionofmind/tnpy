@@ -59,10 +59,10 @@ def gtqr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
     dims_r = list(range(len(shape_r)))
     gt_q = GTensor.construct_from_parity_mats(
             mats=(qe, qo), qns=(qns_qe, qns_qo), dual=dual_q, shape=shape_q,
-            group_dims=(tuple(dims_q[:-1]), (dims_q[-1],)))
+            group_dims=(tuple(dims_q[:-1]), (dims_q[-1],)), cflag=input_gt.cflag)
     gt_r = GTensor.construct_from_parity_mats(
             mats=(re, ro), qns=(qns_re, qns_ro), dual=dual_r, shape=shape_r,
-            group_dims=((0,), tuple(dims_r[1:])))
+            group_dims=((0,), tuple(dims_r[1:])), cflag=input_gt.cflag)
 
     # permute to the desired order if needed
     if qr_dims is not None:
@@ -124,10 +124,10 @@ def super_gtqr(input_gt: GTensor, group_dims: tuple, qr_dims=None) -> tuple:
     dims_r = list(range(len(shape_r)))
     gt_q = GTensor.construct_from_parity_mats(
             mats=(qe, qo), qns=(qns_qe, qns_qo), dual=dual_q, shape=shape_q,
-            group_dims=(tuple(dims_q[:-1]), (dims_q[-1],)))
+            group_dims=(tuple(dims_q[:-1]), (dims_q[-1],)), cflag=input_gt.cflag)
     gt_r = GTensor.construct_from_parity_mats(
             mats=(re, ro), qns=(qns_re, qns_ro), dual=dual_r, shape=shape_r,
-            group_dims=((0,), tuple(dims_r[1:])))
+            group_dims=((0,), tuple(dims_r[1:])), cflag=input_gt.cflag)
 
     # supertrace sign is assigned to Q
     # unitary property of Q should be redefined

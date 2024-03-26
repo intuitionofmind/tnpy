@@ -55,7 +55,7 @@ class FermiMPS(object):
 
         gts = []
         for i in range(n):
-            gts.append(GTensor.rand(dual, shape, cflag))
+            gts.append(GTensor.rand(dual=dual, shape=shape, cflag=cflag))
 
         return cls(gts)
 
@@ -158,39 +158,67 @@ class FermiMPS(object):
         cflag = fmps_0.tensors[0].cflag
 
         # contract from left to right
+        temp_dual = fmps_0.tensors[0].dual[0] ^ 1, fmps_1.tensors[0].dual[0] ^ 1
+        temp_shape = fmps_0.tensors[0].shape[0], fmps_1.tensors[0].shape[0]
         # if normal trace (1, 0)
-        if 1 == fmps_0.tensors[0].dual[0] and 0 == fmps_1.tensors[0].dual[0]:
-            temp = GTensor.eye(dual=(0, 1), shape=(fmps_0.tensors[0].shape[0], fmps_1.tensors[0].shape[0]), cflag=cflag)
+        if (0, 1) == temp_dual:
+            temp = GTensor.eye(dual=temp_dual, shape=temp_shape, cflag=cflag)
         # if supertrace (0, 1)
-        elif 0 == fmps_0.tensors[0].dual[0] and 1 == fmps_1.tensors[0].dual[0]:
-            temp = GTensor.fermion_parity_operator(dual=(1, 0), shape=(fmps_0.tensors[0].shape[0], fmps_1.tensors[0].shape[0]), cflag=cflag)
+        elif (1, 0) == temp_dual:
+            temp = GTensor.fermion_parity_operator(dual=temp_dual, shape=temp_shape, cflag=cflag)
         else:
             raise TypeError('MPS GTensors dual are not matched (left virtural bond)')
 
         for i in range(size):
-            # if normal trace (1, 0)
+            # print(i, temp.dual, fmps_0.tensors[i].dual, fmps_1.tensors[i].dual)
+            # if normal trace with dual (1, 0)
             # a,a--*--c
             #      |d
             # b,b--*--e
             if 1 == fmps_0.tensors[i].dual[2] and 0 == fmps_1.tensors[i].dual[2]:
-                # print(i, temp.dual, fmps_0.tensors[i].dual, fmps_1.tensors[i].dual)
                 temp = tp.gcontract('ab,acd,bed->ce', temp, fmps_0.tensors[i], fmps_1.tensors[i])
-            # if supertrace (0, 1)
+            # if supertrace with dual (0, 1)
             # a,a--*--c
             #      |d,e
             # b,b--*--f
             elif 0 == fmps_0.tensors[i].dual[2] and 1 == fmps_1.tensors[i].dual[2]:
                 fp = GTensor.fermion_parity_operator(dual=(1, 0), shape=(fmps_0.tensors[i].shape[2], fmps_1.tensors[i].shape[2]), cflag=cflag)
-                # print(i, temp.dual, fmps_0.tensors[i].dual, fmps_1.tensors[i].dual)
                 temp = tp.gcontract('ab,acd,de,bfe->cf', temp, fmps_0.tensors[i], fp, fmps_1.tensors[i])
             else:
-                raise TypeError('MPS GTensors dual are not matched (physical bond)')
+                raise TypeError('MPS GTensors duals of physical bonds are not matched')
 
-        if 0 == temp.dual[0] and 1 == temp.dual[1]:
+        if (0, 1) == temp.dual:
             fp = GTensor.fermion_parity_operator(dual=(1, 0), shape=(temp.shape[0], temp.shape[1]), cflag=cflag)
             res = tp.gcontract('ab,ab->', temp, fp)
-        elif 1 == temp.dual[0] and 0 == temp.dual[1]:
+        elif (1, 0) == temp.dual:
             res = tp.gcontract('aa->', temp)
+
+        return res
+
+    @staticmethod
+    def inner_product_2(fmps_0, fmps_1):
+        r'''
+        inner product of two FermiMPSs: <Psi_0|Psi_1>
+        --*--*--*-- <Psi_0|
+          |  |  |
+        --*--*--*-- |Psi_1>
+        '''
+
+        assert fmps_0.size == fmps_1.size
+        size = fmps_0.size
+        cflag = fmps_0.tensors[0].cflag
+
+        # a--*--b
+        #    |c
+        # a--*--d
+        temp = tp.gcontract('abc,adc->bd', fmps_0.tensors[0], fmps_1.tensors[0], bosonic_dims=('a', 'c'))
+        for i in range(1, size):
+            # a,a--*--c
+            #      |d
+            # b,b--*--e
+            temp = tp.gcontract('ab,acd,bed->ce', temp, fmps_0.tensors[i], fmps_1.tensors[i], bosonic_dims=('d',))
+
+        res = tp.gcontract('aa->', temp, bosonic_dims=('a',))
 
         return res
 
