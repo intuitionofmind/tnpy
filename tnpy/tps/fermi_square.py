@@ -949,23 +949,17 @@ class FermiSquareTPS(object):
                     print(se.shape[0], so.shape[0], se, so)
 
         s_mean = sum(s_all)/len(s_all)
+        s_mean = s_mean/max(s_mean)
         if ifprint:
             print('direct average:', s_mean)
         cf = self._link_tensors[(0, 0)][0].cflag
         n = 0
         for c in self._coords:
             for d in range(2):
-                new_se, new_so = torch.zeros(shapes[n][0]), torch.zeros(shapes[n][1])
-                for i, val in enumerate(s_mean):
-                    # even
-                    if i < shapes[n][0]:
-                        new_se[i] = val
-                    # odd
-                    else:
-                        j = i-shapes[n][0]
-                        new_so[j] = val
-
-                new_blocks = {(0, 0):new_se.diag(), (1, 1):new_so.diag()}
+                new_se = s_mean[:shapes[n][0]].clone()
+                new_so = s_mean[shapes[n][0]:].clone()
+                # print(new_se, new_so)
+                new_blocks = {(0, 0): new_se.diag(), (1, 1): new_so.diag()}
                 new_gt = GTensor(dual=(0, 1), shape=self._link_tensors[c][d].shape, blocks=new_blocks, cflag=cf)
                 self._link_tensors[c][d] = new_gt
                 n += 1
