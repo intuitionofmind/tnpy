@@ -259,7 +259,7 @@ class Z2gTensor(object):
         ----------
         args[0]: contraction string, MUST specify the output string with '->'
         args[1], args[2], ...: Z2gTensor, tensors to be contracted
-        bosonic_dims: list[str] or tuple[str]
+        bosonic_dims: list[str] or tuple[str], dims to be contracted without the super-sign
         info:
 
         Returns
@@ -308,19 +308,24 @@ class Z2gTensor(object):
             sign = 1
             # i < j
             for i, j in pairs:
-                assert dual[i] ^ dual[j], 'vector spaces to be contracted are NOT matched (one and a dual one, or vice versa)'
+                # permute 'qs[j]' behind 'qs[i]'
+                # if dual[i] ^ dual[j]:
+                    # sign *= (-1)**(temp_qs[j]*sum(temp_qs[(i+1):j]))
+
                 # case: i -<- j
                 # permute 'qs[j]' behind 'qs[i]'
-                if 1 == dual[i]:
+                if 1 == dual[i] and 0 == dual[j]:
                     sign *= (-1)**(temp_qs[j]*sum(temp_qs[(i+1):j]))
                     # set to zero as this very pair has been already contracted
                     # !do not pop out since we need to keep other pairs' position unchanged
                     temp_qs[i], temp_qs[j] = 0, 0
                 # case: i ->- j
                 # permute 'qs[i]' behind 'qs[j]'
-                else:
+                elif 0 == dual[i] and 1 == dual[j]:
                     sign *= (-1)**(temp_qs[i]*sum(temp_qs[(i+1):(j+1)]))
                     temp_qs[i], temp_qs[j] = 0, 0
+                else:
+                    raise TypeError('bonds be contracted are NOT matched (one and a dual one, or vice versa)')
 
             return sign
 
@@ -329,23 +334,25 @@ class Z2gTensor(object):
         assert num_gt == len(args)-1, 'number of Z2gTensors and the string epxression do NOT match'
         # split
         oe_str_split = oe_str.split('->')
-        assert len(oe_str_split) > 1, 'should specify the outstring after ->'
+        assert len(oe_str_split) > 1, 'you need to specify the output string after ->'
+
         # contraction
         fused_str = oe_str_split[0].replace(',', '')
         fused_length = len(fused_str)
         assert fused_length == sum([args[i+1].ndim for i in range(num_gt)]), 'string length and total dimensions do NOT match'
 
-        # find all the pairs to be contracted, denoted by positions in 'fused_str'
-        pairs = []
+        # find all the pairs to be contracted
+        # each pair is represented by positions in 'fused_str'
+        contracted_pairs = []
         uncontracted_str = ''
         for c in fused_str:
             # duplicate characters
-            if 2 == fused_str.count(c) and c not in bosonic_dims:
+            if 2 == fused_str.count(c):
                 first = fused_str.find(c)
                 second = fused_str.find(c, first+1)
                 # if the second is found
-                if second > 0 and (first, second) not in pairs:
-                    pairs.append((first, second))
+                if second > 0 and (first, second) not in contracted_pairs:
+                    contracted_pairs.append((first, second))
             # uncontracted characters
             elif 1 == fused_str.count(c):
                 uncontracted_str += c
@@ -354,7 +361,7 @@ class Z2gTensor(object):
         assert len(per_dims) == len(uncontracted_str), 'permutation string after -> does NOT match the uncontracted ones'
 
         # flatten pairs
-        contracted_bonds = cls.flatten_tuples(pairs)
+        contracted_bonds = cls.flatten_tuples(contracted_pairs)
         # fuse to a combined tuple of dual and shape
         fused_dual = cls.flatten_tuples([args[i+1].dual for i in range(num_gt)])
         fused_shape = cls.flatten_tuples([args[i+1].shape for i in range(num_gt)])
@@ -374,22 +381,21 @@ class Z2gTensor(object):
         for qs in qns_comb:
             fused_qs = cls.flatten_tuples(qs)
             # only identical quantum numbers can be contracted
-            if _check_qnums(fused_qs, pairs):
+            if _check_qnums(fused_qs, contracted_pairs):
                 # contraction sign
-                c_sign = _adjacent_pairs_sign(fused_dual, fused_qs, pairs)
+                c_sign = _adjacent_pairs_sign(fused_dual, fused_qs, contracted_pairs)
                 block_tensors = [args[i+1].blocks()[q] for i, q in enumerate(qs)]
                 # new quantum numbers by removing contracted ones
                 new_qs = tuple([fused_qs[i] for i in range(fused_length) if i not in contracted_bonds])
-                # permutation sign
+                # permutation to the desired order after the permutation
+                # print(new_qs, per_dims)
                 new_qs, p_sign = cls.permute_qnums(new_qs, per_dims)
                 # possible summations of the contracted quantum numbers
                 block_shape = [new_shape[i][q] for i, q in enumerate(new_qs)]
                 bare = torch.zeros(block_shape, dtype=args[1].dtype)
                 block = oe.contract(oe_str, *block_tensors, backend='torch')
-                assert bare.shape == block.shape, 'shape of contracted block not correct'
+                assert bare.shape == block.shape, 'shape of the contracted block is NOT correct'
                 new_blocks[new_qs] = new_blocks.get(new_qs, bare)+c_sign*p_sign*block
-
-                # print(fused_qs, fused_dual, new_qs, c_sign, p_sign, block)
 
         if 0 == len(new_dual):
             return new_blocks[()]
@@ -398,8 +404,8 @@ class Z2gTensor(object):
 
 class GTensor(Z2gTensor):
     r'''
-    class of Grassmann tensor to be used in fermionic systems
-    equvialent to symmetric Z2-graded tensor 
+    class of Z2-symmetric Z2-graded tensor/Grassmann tensor
+    to be used in fermionic systems
 
     two essential properties of GTensor:
     1. must fullfil the Abelian Z2 symmetric fusion rule: outgoing charges = incoming charges
@@ -1036,9 +1042,9 @@ def z2gcontract(*args: any, info=None) -> Z2gTensor:
 def gpermute(t: GTensor, dims: tuple) -> GTensor:
     return t.permute(dims)
 
-def gcontract(*args: any, info=None) -> GTensor:
+def gcontract(*args: any, bosonic_dims=(), info=None) -> GTensor:
     r'''
     GTensor contraction
     '''
 
-    return GTensor.contract(*args, info=info)
+    return GTensor.contract(*args, bosonic_dims=bosonic_dims, info=info)
