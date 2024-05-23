@@ -286,7 +286,7 @@ class Z2gTensor(object):
 
             return True
 
-        def _adjacent_pairs_sign(dual: tuple, qs: tuple, pairs: list) -> int:
+        def _adjacent_pairs_sign(dual: tuple, qs: tuple, pairs: list, boson_pairs: list) -> int:
             r'''
             ancillary for 'contract()'
             find the Z2-fermionic sign if we move pairs of quantum numbers to be adjacent according to the 'dual'
@@ -297,6 +297,7 @@ class Z2gTensor(object):
             dual: tuple[int], a tuple denoting vector spaces types
             qs: tuple[int], a tuple of Z2 quantum numbers
             pairs: list[tuple] or tuple[tuple], a list (or tuple) of pairs of quantum numbers' positions
+            pairs: list[tuple] or tuple[tuple], pairs to be contracted
 
             Returns
             -------
@@ -306,24 +307,22 @@ class Z2gTensor(object):
             # used to track the sign
             temp_qs = list(qs)
             sign = 1
-            # i < j
-            for i, j in pairs:
-                # permute 'qs[j]' behind 'qs[i]'
-                # if dual[i] ^ dual[j]:
-                    # sign *= (-1)**(temp_qs[j]*sum(temp_qs[(i+1):j]))
 
-                # case: i -<- j
-                # permute 'qs[j]' behind 'qs[i]'
-                if 1 == dual[i] and 0 == dual[j]:
+            # i < j is already guaranteed
+            for p in pairs:
+                i, j = p
+                if dual[i] ^ dual[j]:
+                    # permute 'qs[j]' behind 'qs[i]'
                     sign *= (-1)**(temp_qs[j]*sum(temp_qs[(i+1):j]))
+                    # another possible fermionic sign if supertrace happens
+                    # i ->- j |i><j|
+                    if p not in boson_pairs and 0 == dual[i]:
+                        sign *= (-1)**(temp_qs[i]*temp_qs[j])
+
                     # set to zero as this very pair has been already contracted
                     # !do not pop out since we need to keep other pairs' position unchanged
                     temp_qs[i], temp_qs[j] = 0, 0
-                # case: i ->- j
-                # permute 'qs[i]' behind 'qs[j]'
-                elif 0 == dual[i] and 1 == dual[j]:
-                    sign *= (-1)**(temp_qs[i]*sum(temp_qs[(i+1):(j+1)]))
-                    temp_qs[i], temp_qs[j] = 0, 0
+
                 else:
                     raise TypeError('bonds be contracted are NOT matched (one and a dual one, or vice versa)')
 
@@ -344,6 +343,7 @@ class Z2gTensor(object):
         # find all the pairs to be contracted
         # each pair is represented by positions in 'fused_str'
         contracted_pairs = []
+        bosonic_pairs = []
         uncontracted_str = ''
         for c in fused_str:
             # duplicate characters
@@ -353,6 +353,8 @@ class Z2gTensor(object):
                 # if the second is found
                 if second > 0 and (first, second) not in contracted_pairs:
                     contracted_pairs.append((first, second))
+                    if c in bosonic_dims:
+                        bosonic_pairs.append((first, second))
             # uncontracted characters
             elif 1 == fused_str.count(c):
                 uncontracted_str += c
@@ -383,7 +385,7 @@ class Z2gTensor(object):
             # only identical quantum numbers can be contracted
             if _check_qnums(fused_qs, contracted_pairs):
                 # contraction sign
-                c_sign = _adjacent_pairs_sign(fused_dual, fused_qs, contracted_pairs)
+                c_sign = _adjacent_pairs_sign(fused_dual, fused_qs, contracted_pairs, bosonic_pairs)
                 block_tensors = [args[i+1].blocks()[q] for i, q in enumerate(qs)]
                 # new quantum numbers by removing contracted ones
                 new_qs = tuple([fused_qs[i] for i in range(fused_length) if i not in contracted_bonds])
