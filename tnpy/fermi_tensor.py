@@ -304,7 +304,7 @@ class Z2gTensor(object):
             sign: int, fermionic sign arised from this permutation
             '''
 
-            # used to track the sign
+            # to track the sign
             temp_qs = list(qs)
             sign = 1
 
