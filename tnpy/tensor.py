@@ -44,3 +44,45 @@ def random_isometric_tensor(shape: tuple, iso_axis: int):
     back_axes.insert(iso_axis, back_axes.pop(-1))
 
     return temp.permute(tuple(back_axes))
+
+class U1Tensor(object):
+    r'''
+    U1 symmetric tensor
+    '''
+
+    def __init__(self, dual: tuple, shape: tuple, blocks: dict, cflag=False, info=None) -> None:
+        r'''
+        Parameters
+        ----------
+        dual: tuple[int], like (0, 0, 1, 1), denote the type of vector spaces associated with each bond
+            CONVENTION: 0: super vector space (outgoing arrow); 1: dual super vector space (incoming arrow)
+        shape: tuple[tuple], denote the shape of even and odd sectors like ((1, 2), (3, 4), ...)
+        blocks: dict, key: (parity quantum numbers, value: degeneracy tensor)
+        parity: int, 0 or 1
+        cflag: bool, set the tensor with complex number entries or not
+            DEFAULT: False
+        '''
+
+        self._dual = dual
+        # rank (r, s), r: outgoing #, s: incoming #
+        self._rank = (self._dual.count(0), self._dual.count(1))
+        self._ndim = len(self._dual)
+
+        self._shape = shape
+
+        self._blocks = blocks
+        # sort the blocks by viewing 'key' as a binary number
+        self._blocks = dict(sorted(self._blocks.items(), key=lambda item: int(''.join(str(e) for e in item[0]), 2)))
+        # check the parity and block shapes
+        parity = sum(next(iter(self._blocks.keys()))) & 1
+        for k, v in self._blocks.items():
+            assert parity == sum(k) & 1, 'quantum number is not consistent with the parity'
+            block_shape = [self._shape[i][q] for i, q in enumerate(k)]
+            assert v.shape == tuple(block_shape), ('block shape %s is not consistent with the whole shape %s' % (v.shape, shape))
+            if cflag:
+                self._blocks[k] = v.cdouble()
+
+        self._parity = parity
+        self._dtype = tuple(self._blocks.values())[0].dtype
+        self._cflag = cflag
+        self._info = info

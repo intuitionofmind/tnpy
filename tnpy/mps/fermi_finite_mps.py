@@ -62,7 +62,7 @@ class FermiMPS(object):
     @classmethod
     def rand_obc(cls, n: int, dual: tuple, max_shape: tuple, cflag=True):
         r'''
-        randomly generate a fMPS with open boundary condition
+        randomly generate a fMPS with open boundary conditions
 
         Parameters
         ----------
@@ -144,14 +144,9 @@ class FermiMPS(object):
 
         return FermiMPS(tensors_dagger)
 
+    '''
     @staticmethod
-    def inner_product(fmps_0, fmps_1):
-        r'''
-        inner product of two FermiMPSs: <Psi_0|Psi_1>
-        --*--*--*-- <Psi_0|
-          |  |  |
-        --*--*--*-- |Psi_1>
-        '''
+    def inner_product_old(fmps_0, fmps_1):
 
         assert fmps_0.size == fmps_1.size
         size = fmps_0.size
@@ -194,11 +189,12 @@ class FermiMPS(object):
             res = tp.gcontract('aa->', temp)
 
         return res
+    '''
 
     @staticmethod
-    def inner_product_2(fmps_0, fmps_1):
+    def inner_product(fmps_0, fmps_1):
         r'''
-        inner product of two FermiMPSs: <Psi_0|Psi_1>
+        inner product of two FermiMPS: <Psi_0|Psi_1>
         --*--*--*-- <Psi_0|
           |  |  |
         --*--*--*-- |Psi_1>

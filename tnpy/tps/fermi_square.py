@@ -316,6 +316,7 @@ class FermiSquareTPS(object):
             if ifprint and None == expand:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
+                    # print(key, val.diag())
                     diff += (self._link_tensors[c][0].blocks()[key]-val).norm()
                 print('X Lambda changing:', diff.item())
 
@@ -910,6 +911,7 @@ class FermiSquareTPS(object):
                     print(se.shape[0], so.shape[0], se, so)
 
         s_mean = sum(s_all)/len(s_all)
+        s_mean = s_mean/max(s_mean)
         if ifprint:
             print('sorted average:', s_mean)
         cf = self._link_tensors[(0, 0)][0].cflag
@@ -923,9 +925,10 @@ class FermiSquareTPS(object):
                     new_so = s_mean[:cuts[n]].clone()
                     new_se = s_mean[cuts[n]:].clone()
 
-                new_blocks = {(0, 0):new_se.diag(), (1, 1):new_so.diag()}
+                new_blocks = {(0, 0): new_se.diag(), (1, 1): new_so.diag()}
                 new_gt = GTensor(dual=(0, 1), shape=self._link_tensors[c][d].shape, blocks=new_blocks, cflag=cf)
                 self._link_tensors[c][d] = new_gt
+
                 n += 1
 
         return 1
@@ -942,7 +945,10 @@ class FermiSquareTPS(object):
                 se = self._link_tensors[c][d].blocks()[(0, 0)].diag()
                 so = self._link_tensors[c][d].blocks()[(1, 1)].diag()
                 # join two sectors and sort
-                s = torch.cat((se, so), dim=0)
+                if se[0] > so [0]:
+                    s = torch.cat((se, so), dim=0)
+                else:
+                    s = torch.cat((so, se), dim=0)
                 s_all.append(s)
                 shapes.append((se.shape[0], so.shape[0]))
                 if ifprint:
