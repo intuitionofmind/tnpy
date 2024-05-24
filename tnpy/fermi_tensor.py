@@ -314,8 +314,8 @@ class Z2gTensor(object):
                 if dual[i] ^ dual[j]:
                     # permute 'qs[j]' behind 'qs[i]'
                     sign *= (-1)**(temp_qs[j]*sum(temp_qs[(i+1):j]))
-                    # another possible fermionic sign if supertrace happens
-                    # i ->- j |i><j|
+                    # another possible fermionic sign if supertrace happens for this adjacent pair
+                    # i ->- j: |i><j|
                     if p not in boson_pairs and 0 == dual[i]:
                         sign *= (-1)**(temp_qs[i]*temp_qs[j])
 
@@ -340,12 +340,17 @@ class Z2gTensor(object):
         fused_length = len(fused_str)
         assert fused_length == sum([args[i+1].ndim for i in range(num_gt)]), 'string length and total dimensions do NOT match'
 
+        # check the bosonic dims
+        for c in bosonic_dims:
+            assert 2 == fused_str.count(c), 'your input bosonic dim %s is not going to be contracted' % c
+
         # find all the pairs to be contracted
         # each pair is represented by positions in 'fused_str'
         contracted_pairs = []
         bosonic_pairs = []
         uncontracted_str = ''
         for c in fused_str:
+
             # duplicate characters
             if 2 == fused_str.count(c):
                 first = fused_str.find(c)
@@ -355,6 +360,7 @@ class Z2gTensor(object):
                     contracted_pairs.append((first, second))
                     if c in bosonic_dims:
                         bosonic_pairs.append((first, second))
+
             # uncontracted characters
             elif 1 == fused_str.count(c):
                 uncontracted_str += c
