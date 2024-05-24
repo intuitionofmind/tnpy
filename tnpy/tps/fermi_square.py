@@ -234,11 +234,11 @@ class FermiSquareTPS(object):
 
     def merged_tensors(self) -> dict:
         r'''
-        build the tensors merged with square root of the environments
+        site tensors merged with square root of the environments
 
         Returns
         -------
-        mgts: dict, {site: merged tensor}
+        mgts: dict, {site: merged GTensor}
         '''
 
         mgts = {}
@@ -3022,6 +3022,36 @@ class FermiSquareTPS(object):
                 self.direct_average_weights(c, ifprint=ifprint)
 
         return 1
+
+    def simple_measurement_onebody(self, op: GTensor):
+        r'''
+        measure one-body operator by double tensors on the Beta lattice
+        Parameters
+        ----------
+        op: GTensor, the one-body operator
+
+        Returns
+        -------
+        res: tensor, averaged values on each site
+        '''
+
+        mgts = self.merged_tensors()
+
+        res = []
+        for c in self._coords:
+
+            # merge the Lambda weights as environment tensors
+            pure_gt = tp.gcontract('aA,Bb,Cc,dD,ABCDE->abcdE', *self.site_envs(c), mgts[c])
+            # and apply the operator
+            impure_gt = tp.gcontract('aA,Bb,Cc,dD,eE,ABCDE->abcde', *self.site_envs(c), op, mgts[c])
+            
+            den = tp.gcontract('abcde,abcde->', mgts[c].conj(), pure_gt, bosonic_dims=('a', 'b', 'c', 'd', 'e'))
+            num = tp.gcontract('abcde,abcde->', mgts[c].conj(), impure_gt, bosonic_dims=('a', 'b', 'c', 'd', 'e'))
+            
+            res.append(num / den)
+
+        # print(res)
+        return sum(res) / self._size
 
     def dt_measure_AB_onebody(self, op: GTensor):
         r'''
