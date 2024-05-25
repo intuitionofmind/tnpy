@@ -3050,8 +3050,44 @@ class FermiSquareTPS(object):
             
             res.append(num / den)
 
-        # print(res)
-        return sum(res) / self._size
+        # return sum(res) / self._size
+        return torch.tensor(res)
+
+    def simple_measurement_twobody(self, op_0: GTensor, op_1: GTensor):
+
+        ops = op_0, op_1
+        mgts = self.merged_tensors()
+
+        meas = []
+        for c in self._coords:
+            cx = (c[0]+1) % self._nx, c[1]
+            cy = c[0], (c[1]+1) % self._ny
+
+            # X-direction
+            # merge environments
+            envs = self.site_envs(c)
+            gt_c = tp.gcontract('aA,Bb,dD,ABCDE->abCdE', envs[0], envs[1], envs[3], mgts[c])
+            envs = self.site_envs(cx)
+            gt_cx = tp.gcontract('Bb,Cc,dD,ABCDE->AbcdE', envs[1], envs[2], envs[3], mgts[cx])
+
+            den = tp.gcontract('abjde,abcde,jfghi,cfghi->', mgts[c].conj(), gt_c, mgts[cx].conj(), gt_cx, bosonic_dims=('a', 'b', 'd', 'e', 'f', 'g', 'h', 'i'))
+            num = tp.gcontract('abjde,eE,abcdE,jfghi,iI,cfghI->', mgts[c].conj(), op_0, gt_c, mgts[cx].conj(), op_1, gt_cx, bosonic_dims=('a', 'b', 'd', 'e', 'f', 'g', 'h', 'i'))
+
+            meas.append(num / den)
+
+            # Y-direction
+            # merge environments
+            envs = self.site_envs(c)
+            gt_c = tp.gcontract('aA,Cc,dD,ABCDE->aBcdE', envs[0], envs[2], envs[3], mgts[c])
+            envs = self.site_envs(cy)
+            gt_cy = tp.gcontract('aA,Bb,Cc,ABCDE->abcDE', envs[0], envs[1], envs[2], mgts[cy])
+
+            den = tp.gcontract('ajcde,abcde,fghji,fghbi->', mgts[c].conj(), gt_c, mgts[cy].conj(), gt_cy, bosonic_dims=('a', 'c', 'd', 'e', 'f', 'g', 'h', 'i'))
+            num = tp.gcontract('ajcde,eE,abcdE,fghji,iI,fghbI->', mgts[c].conj(), op_0, gt_c, mgts[cy].conj(), op_1, gt_cy, bosonic_dims=('a', 'c', 'd', 'e', 'f', 'g', 'h', 'i'))
+
+            meas.append(num / den)
+
+        return torch.tensor(meas)
 
     def dt_measure_AB_onebody(self, op: GTensor):
         r'''
