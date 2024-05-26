@@ -342,7 +342,8 @@ class Z2gTensor(object):
 
         # check the bosonic dims
         for c in bosonic_dims:
-            assert 2 == fused_str.count(c), 'your input bosonic dim %s is not going to be contracted' % c
+            if 2 != fused_str.count(c):
+                raise ValueError('your bosonic dimension %s appears NOT twice in %s' % (c, fused_str))
 
         # find all the pairs to be contracted
         # each pair is represented by positions in 'fused_str'
