@@ -1041,12 +1041,12 @@ class GTensor(Z2gTensor):
 # module-level functions for fermi tensor
 # ----------------------------------
 
-def z2gcontract(*args: any, info=None) -> Z2gTensor:
+def z2gcontract(*args: any, bosonic_dims=(), info=None) -> Z2gTensor:
     r'''
     Z2gTensor contraction
     '''
 
-    return Z2gTensor.contract(*args, info=info)
+    return Z2gTensor.contract(*args, bosonic_dims=bosonic_dims, info=info)
 
 def gpermute(t: GTensor, dims: tuple) -> GTensor:
     return t.permute(dims)
