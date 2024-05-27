@@ -3032,7 +3032,7 @@ class FermiSquareTPS(object):
 
         Returns
         -------
-        res: tensor, averaged values on each site
+        res: tensor, measured values
         '''
 
         mgts = self.merged_tensors()
@@ -3054,8 +3054,19 @@ class FermiSquareTPS(object):
         return torch.tensor(res)
 
     def simple_measurement_twobody(self, op_0: GTensor, op_1: GTensor):
+        r'''
+        measure a two-body operator by double tensors on the Beta lattice
 
-        ops = op_0, op_1
+        Parameters
+        ----------
+        op_0: GTensor, the first operator
+        op_1: GTensor, the second operator
+
+        Returns
+        -------
+        res: tensor, measured values
+        '''
+
         mgts = self.merged_tensors()
 
         meas = []
@@ -3064,27 +3075,64 @@ class FermiSquareTPS(object):
             cy = c[0], (c[1]+1) % self._ny
 
             # X-direction
+            pure_dts, impure_dts = [], []
             # merge environments
             envs = self.site_envs(c)
-            gt_c = tp.gcontract('aA,Bb,dD,ABCDE->abCdE', envs[0], envs[1], envs[3], mgts[c])
+            temp_gt = tp.gcontract('aA,Bb,dD,ABCDE->abCdE', envs[0], envs[1], envs[3], mgts[c])
+            # build pure and impure double tensors
+            pure_dt = tp.gcontract(
+                    'abCde,abcde->Cc', mgts[c].conj(), temp_gt, 
+                    bosonic_dims=('a', 'b', 'd', 'e'))
+            # note that impure double tensor possibly break the Z2-parity symmetry
+            # such as a single fermion operator
+            impure_dt = tp.z2gcontract(
+                    'abCdE,Ee,abcde->Cc', mgts[c].conj(), op_0, temp_gt,
+                    bosonic_dims=('a', 'b', 'd', 'E'))
+            pure_dts.append(pure_dt)
+            impure_dts.append(impure_dt)
+
             envs = self.site_envs(cx)
-            gt_cx = tp.gcontract('Bb,Cc,dD,ABCDE->AbcdE', envs[1], envs[2], envs[3], mgts[cx])
+            temp_gt = tp.gcontract('Bb,Cc,dD,ABCDE->AbcdE', envs[1], envs[2], envs[3], mgts[cx])
+            pure_dt = tp.gcontract(
+                    'Abcde,abcde->Aa', mgts[cx].conj(), temp_gt,
+                    bosonic_dims=('b', 'c', 'd', 'e'))
+            impure_dt = tp.z2gcontract(
+                    'AbcdE,Ee,abcde->Aa', mgts[cx].conj(), op_1, temp_gt,
+                    bosonic_dims=('b', 'c', 'd', 'E'))
+            pure_dts.append(pure_dt)
+            impure_dts.append(impure_dt)
 
-            den = tp.gcontract('abjde,abcde,jfghi,cfghi->', mgts[c].conj(), gt_c, mgts[cx].conj(), gt_cx, bosonic_dims=('a', 'b', 'd', 'e', 'f', 'g', 'h', 'i'))
-            num = tp.gcontract('abjde,eE,abcdE,jfghi,iI,cfghI->', mgts[c].conj(), op_0, gt_c, mgts[cx].conj(), op_1, gt_cx, bosonic_dims=('a', 'b', 'd', 'e', 'f', 'g', 'h', 'i'))
-
+            num = tp.z2gcontract('ab,ab->', *impure_dts)
+            den = tp.gcontract('ab,ab->', *pure_dts)
             meas.append(num / den)
 
             # Y-direction
-            # merge environments
+            pure_dts, impure_dts = [], []
+
             envs = self.site_envs(c)
-            gt_c = tp.gcontract('aA,Cc,dD,ABCDE->aBcdE', envs[0], envs[2], envs[3], mgts[c])
+            temp_gt = tp.gcontract('aA,Cc,dD,ABCDE->aBcdE', envs[0], envs[2], envs[3], mgts[c])
+            pure_dt = tp.gcontract(
+                    'aBcde,abcde->Bb', mgts[c].conj(), temp_gt, 
+                    bosonic_dims=('a', 'c', 'd', 'e'))
+            impure_dt = tp.z2gcontract(
+                    'aBcdE,Ee,abcde->Bb', mgts[c].conj(), op_0, temp_gt,
+                    bosonic_dims=('a', 'c', 'd', 'E'))
+            pure_dts.append(pure_dt)
+            impure_dts.append(impure_dt)
+
             envs = self.site_envs(cy)
-            gt_cy = tp.gcontract('aA,Bb,Cc,ABCDE->abcDE', envs[0], envs[1], envs[2], mgts[cy])
+            temp_gt = tp.gcontract('aA,Bb,Cc,ABCDE->abcDE', envs[0], envs[1], envs[2], mgts[cy])
+            pure_dt = tp.gcontract(
+                    'abcDe,abcde->Dd', mgts[cy].conj(), temp_gt,
+                    bosonic_dims=('a', 'b', 'c', 'e'))
+            impure_dt = tp.z2gcontract(
+                    'abcDE,Ee,abcde->Dd', mgts[cy].conj(), op_1, temp_gt,
+                    bosonic_dims=('a', 'b', 'c', 'E'))
+            pure_dts.append(pure_dt)
+            impure_dts.append(impure_dt)
 
-            den = tp.gcontract('ajcde,abcde,fghji,fghbi->', mgts[c].conj(), gt_c, mgts[cy].conj(), gt_cy, bosonic_dims=('a', 'c', 'd', 'e', 'f', 'g', 'h', 'i'))
-            num = tp.gcontract('ajcde,eE,abcdE,fghji,iI,fghbI->', mgts[c].conj(), op_0, gt_c, mgts[cy].conj(), op_1, gt_cy, bosonic_dims=('a', 'c', 'd', 'e', 'f', 'g', 'h', 'i'))
-
+            num = tp.z2gcontract('ab,ab->', *impure_dts)
+            den = tp.gcontract('ab,ab->', *pure_dts)
             meas.append(num / den)
 
         return torch.tensor(meas)
@@ -3485,72 +3533,6 @@ class FermiSquareTPS(object):
             # external bonds
             envs = self.site_envs(c)
             p, q = external_dims[i]
-            gts_envs[c] = envs[p], envs[q]
-
-        pure_dt_strs = 'abcde,aA,dD,ABCDe->bBcC', 'abcde,Cc,dD,ABCDe->aAbB', 'abcde,aA,Bb,ABCDe->cCdD', 'abcde,Bb,Cc,ABCDe->aAdD'
-        impure_dt_strs = 'abcde,aA,dD,eE,ABCDE->bBcC', 'abcde,Cc,dD,eE,ABCDE->aAbB', 'abcde,aA,Bb,eE,ABCDE->cCdD', 'abcde,Bb,Cc,eE,ABCDE->aAdD'
-        pure_dts, impure_dts = {}, {}
-        for i, c in enumerate(self._coords):
-            # print(i, c, pure_dt_strs[i], gts_envs[c])
-            pure_dts[c] = tp.gcontract(pure_dt_strs[i], gts_dagger[c], *gts_envs[c], gts[c])
-            impure_dts[c] = tp.gcontract(impure_dt_strs[i], gts_dagger[c], *gts_envs[c], op, gts[c])
-        # norm
-        norm = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *pure_dts.values())
-
-        measurements = {}
-        for i, c in enumerate(self._coords):
-            temp_dts = deepcopy(pure_dts)
-            # repalce with an impure double tensor
-            temp_dts[c] = impure_dts[c]
-            value = tp.gcontract('aAbB,bBcC,dDaA,dDcC->', *temp_dts.values())
-            measurements[c] = measurements.get(c, 0.0)+(value/norm).item()
-
-        res = [v for v in measurements.values()]
-        return torch.tensor(res)
-
-    def dt_fermion_parity_measure_ABCD_onebody(self, op: GTensor):
-        r'''
-        measure 1-body operator by double tensors
-        use normal conjugation and insert fermion parity operator
-
-        Parameters
-        ----------
-        op: GTensor, the one-body operator
-
-        Returns
-        -------
-        res: tensor, averaged values on each site
-        '''
-
-        merged_gts = self.merged_tensors()
-
-        gts, gts_dagger = {}, {}
-        gts_envs = {}
-        internal_dims = (1, 2), (0, 1), (2, 3), (0, 3)
-        external_dims = (0, 3), (2, 3), (0, 1), (1, 2)
-        parity_strs = 'Aa,Dd,abcde->AbcDe', 'cC,Dd,abcde->abCDe', 'Aa,bB,abcde->ABcde', 'bB,cC,abcde->aBCde'
-        for i, c in enumerate(self._coords):
-            gts[c] = merged_gts[c]
-            test_gt = gts[c].graded_conj(free_dims=internal_dims[i], side=0)
-
-            temp = gts[c].conj()
-            p, q = external_dims[i]
-            # conjugated GTensor should be attached with an extra fermion parity operator if its dual is 0
-            # namely recover the normal trace if a supertrace happens on this connected bonds
-            if 0 == temp.dual[p]:
-                fp = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(gts[c].shape[p], gts[c].shape[p]))
-            else:
-                fp = tp.GTensor.eye(dual=(1, 0), shape=(gts[c].shape[p], gts[c].shape[p]))
-            if 0 == temp.dual[q]:
-                fq = tp.GTensor.fermion_parity_operator(dual=(1, 0), shape=(gts[c].shape[q], gts[c].shape[q]))
-            else:
-                fq = tp.GTensor.eye(dual=(1, 0), shape=(gts[c].shape[q], gts[c].shape[q]))
-            gts_dagger[c] = tp.gcontract(parity_strs[i], fp, fq, temp)
-            print(i, parity_strs[i])
-            for key, val in gts_dagger[c].blocks().items():
-                print(key, (val-test_gt.blocks()[key]).norm())
-            # external bonds needs an extra environment tensor
-            envs = self.site_envs(c)
             gts_envs[c] = envs[p], envs[q]
 
         pure_dt_strs = 'abcde,aA,dD,ABCDe->bBcC', 'abcde,Cc,dD,ABCDe->aAbB', 'abcde,aA,Bb,ABCDe->cCdD', 'abcde,Bb,Cc,ABCDe->aAdD'
