@@ -912,9 +912,12 @@ class FermiSquareTPS(object):
 
         s_mean = sum(s_all)/len(s_all)
         s_mean = s_mean/max(s_mean)
+
         if ifprint:
             print('sorted average:', s_mean)
+
         cf = self._link_tensors[(0, 0)][0].cflag
+
         n = 0
         for c in self._coords:
             for d in range(2):
@@ -956,9 +959,12 @@ class FermiSquareTPS(object):
 
         s_mean = sum(s_all)/len(s_all)
         s_mean = s_mean/max(s_mean)
+
         if ifprint:
             print('direct average:', s_mean)
+
         cf = self._link_tensors[(0, 0)][0].cflag
+
         n = 0
         for c in self._coords:
             for d in range(2):
@@ -3104,6 +3110,8 @@ class FermiSquareTPS(object):
 
             num = tp.z2gcontract('ab,ab->', *impure_dts)
             den = tp.gcontract('ab,ab->', *pure_dts)
+
+            # print(num, den)
             meas.append(num / den)
 
             # Y-direction
@@ -3133,9 +3141,40 @@ class FermiSquareTPS(object):
 
             num = tp.z2gcontract('ab,ab->', *impure_dts)
             den = tp.gcontract('ab,ab->', *pure_dts)
+            
+            # print(num, den)
             meas.append(num / den)
 
         return torch.tensor(meas)
+
+    def simple_measurement_twobody_2(self, op_0: GTensor, op_1: GTensor):
+        r'''
+        measure a two-body operator by double tensors on the Beta lattice
+
+        Parameters
+        ----------
+        op_0: GTensor, the first operator
+        op_1: GTensor, the second operator
+
+        Returns
+        -------
+        res: tensor, measured values
+        '''
+
+        mgts = self.merged_tensors()
+
+        meas = []
+        for c in self._coords:
+            cx = (c[0]+1) % self._nx, c[1]
+            cy = c[0], (c[1]+1) % self._ny
+
+            # X-direction
+            pure_dts, impure_dts = [], []
+            # merge environments
+            envs = self.site_envs(c)
+            temp_gt = tp.gcontract('aA,Bb,dD,ABCDE->abCdE', envs[0], envs[1], envs[3], mgts[c])
+
+        return torch.tensor(res)
 
     def dt_measure_AB_onebody(self, op: GTensor):
         r'''
