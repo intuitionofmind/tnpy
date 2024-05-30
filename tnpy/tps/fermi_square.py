@@ -262,6 +262,7 @@ class FermiSquareTPS(object):
         average_weights: bool,
         expand: tuple[int], optional
             expand to larger D
+            expand[0]: the dominant sector lenght, expand[1]: the secondary sector length
         fixed_dims: bool, if the cut-off dim fixed or not
         '''
 
@@ -279,7 +280,14 @@ class FermiSquareTPS(object):
                 else:
                     cf = sum(gts[0].shape[2])
             else:
-                cf = expand
+                # expand according to the dominant sector
+                temp = self._link_tensors[c][0].blocks()
+                se, so = temp[(0, 0)].diag(), temp[(1, 1)].diag()
+                if se[0] > so[0]:
+                    cf = expand[0], expand[1]
+                else:
+                    cf = expand[1], expand[0]
+
             envs = [self.mixed_site_envs(c, ex_bonds=(0, 1, 3)), self.mixed_site_envs(cx, ex_bonds=(1, 2, 3))]
             # inverse of envs, for removing the envs later
             envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
@@ -313,10 +321,10 @@ class FermiSquareTPS(object):
             self._site_tensors[cx] = (1.0/gts[1].max())*gts[1]
 
             new_lt = (1.0/s.max())*s
+
             if ifprint and None == expand:
                 diff = 0.0
                 for key, val in new_lt.blocks().items():
-                    # print(key, val.diag())
                     diff += (self._link_tensors[c][0].blocks()[key]-val).norm()
                 print('X Lambda changing:', diff.item())
 
@@ -331,7 +339,13 @@ class FermiSquareTPS(object):
                 else:
                     cf = sum(gts[0].shape[1])
             else:
-                cf = expand
+                temp = self._link_tensors[c][1].blocks()
+                se, so = temp[(0, 0)].diag(), temp[(1, 1)].diag()
+                if se[0] > so[0]:
+                    cf = expand[0], expand[1]
+                else:
+                    cf = expand[1], expand[0]
+
             envs = [self.mixed_site_envs(c, ex_bonds=(0, 2, 3)), self.mixed_site_envs(cy, ex_bonds=(0, 1, 2))]
             envs_inv = [[tp.linalg.ginv(envs[0][j]) for j in range(4)], [tp.linalg.gpinv(envs[1][j]) for j in range(4)]]
             # absorb envs into GTensors
