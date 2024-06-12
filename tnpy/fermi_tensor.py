@@ -7,7 +7,7 @@ torch.set_default_dtype(torch.float64)
 
 class Z2gTensor(object):
     r'''
-    Z2-graded tensor
+    class of Z2-graded tensor
     bond permutations should obey the Z2-graded tensor product structure
     '''
 
@@ -112,8 +112,10 @@ class Z2gTensor(object):
         return self._blocks
 
     def norm(self) -> float:
-        nors = [t.norm().item() for t in self._blocks.values()]
-        return sum(nors)
+
+        temp = [(torch.linalg.norm(t))**2 for t in self._blocks.values()]
+        
+        return torch.sqrt(sum(temp))
 
     def max(self):
         r'''
@@ -251,7 +253,7 @@ class Z2gTensor(object):
     @classmethod
     def contract(cls, *args: any, bosonic_dims=(), info=None):
         r'''
-        contract
+        contract Z2gTensors
         powered by 'opt_einsum'
         https://optimized-einsum.readthedocs.io/en/stable/
 
@@ -264,7 +266,7 @@ class Z2gTensor(object):
 
         Returns
         -------
-        if all bonds are contracted, return a torch.tensor();
+        if all bonds are contracted, return a torch.tensor()
         else, return a Z2gTensor
         '''
 
@@ -411,10 +413,11 @@ class Z2gTensor(object):
         else:
             return cls(dual=tuple(new_dual), shape=tuple(new_shape), blocks=new_blocks, cflag=args[1].cflag, info=info)
 
+
 class GTensor(Z2gTensor):
     r'''
     class of Z2-symmetric Z2-graded tensor/Grassmann tensor
-    to be used in fermionic systems
+    or even-parity Z2gTensor
 
     two essential properties of GTensor:
     1. must fullfil the Abelian Z2 symmetric fusion rule: outgoing charges = incoming charges
