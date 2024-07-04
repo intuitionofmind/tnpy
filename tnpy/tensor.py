@@ -7,7 +7,8 @@ import torch
 torch.set_default_dtype(torch.float64)
 
 def contract(*args: any):
-    return oe.contract(*args, backend='torch')
+
+    return torch.einsum(*args)
 
 def random_isometric_tensor(shape: tuple, iso_axis: int):
     r'''
