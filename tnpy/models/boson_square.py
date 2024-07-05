@@ -89,9 +89,14 @@ class SquareXYZ(object):
 
         return ham
 
-    def twobody_time_evo(self, ham: torch.tensor, delta: float):
+    def twobody_img_time_evo(self, ham: torch.tensor, delta: float):
         r'''
         two-body time evolution operator
+
+        Parmaeters
+        ----------
+        ham: tensor, two-body Hamiltonian gate
+        delta: float, time step size
         '''
 
         ham_mat = ham.reshape(self._dim_phys**2, self._dim_phys**2)
@@ -162,3 +167,17 @@ class SquareTFIM(object):
         ham += -0.25*self._h*torch.kron(self._ops[1], self._ops[1]).reshape(ham_shape).permute(0, 2, 1, 3)
 
         return ham
+
+    def twobody_img_time_evo(self, ham: torch.tensor, delta: float):
+        r'''
+        two-body time evolution operator
+
+        Parmaeters
+        ----------
+        ham: tensor, two-body Hamiltonian gate
+        delta: float, time step size
+        '''
+
+        ham_mat = ham.reshape(4, 4)
+
+        return torch.linalg.matrix_exp(-delta*ham_mat).reshape(ham.shape)
