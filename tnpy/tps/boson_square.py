@@ -135,7 +135,7 @@ class SquareTPS(object):
 
         return deepcopy(self._link_tensors)
 
-    def site_envs(self, site: tuple, inner_bonds=None) -> list:
+    def site_envs(self, site: tuple, inner_bonds=()) -> list:
         r'''
         return the environment bond weights around a site
 
@@ -151,23 +151,27 @@ class SquareTPS(object):
         envs.append(self._link_tensors[site][0])
         envs.append(self._link_tensors[(site[0], (site[1]-1) % self._ny)][1])
 
-        if inner_bonds is not None:
-            for j in range(4):
-                if j in inner_bonds:
-                    envs[j] = torch.sqrt(envs[j])
+        for j in inner_bonds:
+            envs[j] = torch.sqrt(envs[j])
 
         return envs
 
     def merged_tensor(self, site):
         r'''
         return site tensor merged with square root of link tensors around
+
+        Parameters
+        ----------
+        site: tuple[int], coordinate
         '''
 
         envs = self.site_envs(site, inner_bonds=(0, 1, 2, 3))
 
-        return tp.contract(
-                'abcde,Aa,bB,cC,Dd->ABCDe',
-                self._site_tensors[site], *envs)
+        temp = torch.einsum('Aa,abcde->Abcde', envs[0], self._site_tensors[site])
+        temp = torch.einsum('abcde,bB->aBcde', temp, envs[1])
+        temp = torch.einsum('abcde,cC->abCde', temp, envs[2])
+
+        return torch.einsum('Dd,abcde->abcDe', envs[3], temp)
 
     def simple_update_proj(self, time_evo_mpo: tuple):
         r'''
@@ -334,5 +338,40 @@ class SquareTPS(object):
                     ]
             self._site_tensors[c] = updated_ts[0]/torch.linalg.norm(updated_ts[0])
             self._site_tensors[cy] = updated_ts[1]/torch.linalg.norm(updated_ts[1])
+
+        return 1
+
+    def beta_twobody_measure(self, ops):
+        r'''
+        measure bond energy on beta lattice
+
+        Parameters
+        ----------
+        ops: tuple[tensor], twobody operator
+        '''
+
+        mts = {}
+        for c in self._coords:
+            mts.update({c: self.merged_tensor(c)})
+
+        # measure on four bonds
+        for c in self._coords:
+
+            # forward sites along two directions
+            cx = (c[0]+1) % self._nx, c[1]
+            cy = c[0], (c[1]+1) % self._ny
+            cxy = (c[0]+1) % self._nx, (c[1]+1) % self._ny
+
+            # envs = self._link_tensors[cx][0], self._link_tensors[c][1], self._link_tensors[cy][1], self._link_tensors[cx][1], self._link_tensors[cx][0], self._link_tensors[cxy][1]
+
+            envs = self.site_envs(site,)
+       
+            path_info = oe.contract_path(
+                    'ABCDE,Ee,abcde,Aa,Bb,Dd,CFGHI,Ii,cfghi,Ff,Gg,Hh', 
+                    mts[c].conj(), ops[0], mts[c], envs[0], envs[1], envs[2],
+                    mts[cx].conj(), ops[1], mts[cx], envs[3], envs[4], envs[5],
+                    optimize='optimal')
+
+            print(path_info)
 
         return 1
