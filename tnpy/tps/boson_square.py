@@ -349,7 +349,7 @@ class SquareTPS(object):
 
         return 1
 
-    def beta_twobody_measure(self, ops):
+    def beta_twobody_measure_ops(self, ops: tuple):
         r'''
         measure bond energy on beta lattice
 
@@ -377,20 +377,21 @@ class SquareTPS(object):
             # replace the connected bond by an identity
             envs[2] = torch.eye(self._bond_dim)
             temp = self.absorb_envs(mts[c], envs).conj()
-            # absorb the operator
-            temp = torch.einsum('abcde,eE->abcdE', temp, ops[0])
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cx)
             envs[0] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[cx], envs).conj()
-            temp = torch.einsum('abcde,eE->abcdE', temp, ops[1])
             mts_conj.update({cx: temp})
 
-            temp = torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c])
-            mea = torch.einsum('Aa,Abcde,abcde', temp, mts_conj[cx], mts[cx])
+            dens = [
+                    torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c]),
+                    torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
+            nums = [
+                    torch.einsum('abCdE,Ee,abcde->Cc', mts_conj[c], ops[0], mts[c]),
+                    torch.einsum('AbcdE,Ee,abcde->Aa', mts_conj[cx], ops[1], mts[cx])]
 
-            res.append(mea)
+            res.append(torch.einsum('ab,ab', *nums) / torch.einsum('ab,ab', *dens))
 
             # Y-direction
             mts_conj = {}
@@ -399,24 +400,25 @@ class SquareTPS(object):
             # replace the connected bond by an identity
             envs[1] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[c], envs).conj()
-            # absorb the operator
-            temp = torch.einsum('abcde,eE->abcdE', temp, ops[0])
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cy)
             envs[3] = torch.eye(self._bond_dim)
             temp = self.absorb_envs(mts[cy], envs).conj()
-            temp = torch.einsum('abcde,eE->abcdE', temp, ops[1])
             mts_conj.update({cy: temp})
 
-            temp = torch.einsum('aBcde,abcde->Bb', mts_conj[c], mts[c])
-            mea = torch.einsum('Dd,abcDe,abcde', temp, mts_conj[cy], mts[cy])
+            dens = [
+                    torch.einsum('aBcde,abcde->Bb', mts_conj[c], mts[c]),
+                    torch.einsum('abcDe,abcde->Dd', mts_conj[cy], mts[cy])]
+            nums = [
+                    torch.einsum('aBcdE,Ee,abcde->Bb', mts_conj[c], ops[0], mts[c]),
+                    torch.einsum('abcDE,Ee,abcde->Dd', mts_conj[cy], ops[1], mts[cy])]
 
-            res.append(mea)
+            res.append(torch.einsum('ab,ab', *nums) / torch.einsum('ab,ab', *dens))
 
         return torch.mean(torch.as_tensor(res))
 
-    def beta_twobody_measure_op(self, op):
+    def beta_twobody_measure_mpo(self, op):
         r'''
         measure bond energy on beta lattice
 
@@ -456,16 +458,21 @@ class SquareTPS(object):
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cx)
-            envs[0] = torch.eye(self._bond_dim)
+            envs[0] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[cx], envs).conj()
             mts_conj.update({cx: temp})
 
-            # sandwich MPO
-            sw_0 = torch.einsum('abCdE,fEe,abcde->Cfc', mts_conj[c], mpo[0], mts[c])
-            sw_1 = torch.einsum('AbcdE,fEe,abcde->Afa', mts_conj[cx], mpo[1], mts[cx])
-            mea = torch.einsum('abc,abc', sw_0, sw_1)
+            # sandwich
+            # numerator
+            nums = [
+                    torch.einsum('abCdE,fEe,abcde->Cfc', mts_conj[c], mpo[0], mts[c]),
+                    torch.einsum('AbcdE,fEe,abcde->Afa', mts_conj[cx], mpo[1], mts[cx])]
+            # denominator
+            dens = [
+                    torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c]),
+                    torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
 
-            res.append(mea)
+            res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
 
             # Y-direction
             mts_conj = {}
@@ -482,11 +489,14 @@ class SquareTPS(object):
             temp = self.absorb_envs(mts[cy], envs).conj()
             mts_conj.update({cy: temp})
 
-            sw_0 = torch.einsum('aBcdE,fEe,abcde->Bfb', mts_conj[c], mpo[0], mts[c])
-            sw_1 = torch.einsum('abcDE,fEe,abcde->Dfd', mts_conj[cy], mpo[1], mts[cy])
-            mea = torch.einsum('abc,abc', sw_0, sw_1)
-
-            res.append(mea)
+            nums = [
+                    torch.einsum('aBcdE,fEe,abcde->Bfb', mts_conj[c], mpo[0], mts[c]),
+                    torch.einsum('abcDE,fEe,abcde->Dfd', mts_conj[cy], mpo[1], mts[cy])]
+            dens = [
+                    torch.einsum('aBcde,abcde->Bb', mts_conj[c], mts[c]),
+                    torch.einsum('abcDe,abcde->Dd', mts_conj[cy], mts[cy])]
+ 
+            res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
 
         # print(res)
         return torch.mean(torch.as_tensor(res))
