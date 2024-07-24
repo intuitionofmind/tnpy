@@ -63,6 +63,7 @@ class SquareTPS(object):
 
         self._coords = tuple(self._site_tensors.keys())
         self._size = len(self._coords)
+        self._bond_dim = int(self._site_tensors[(0, 0)].shape[0])
 
         # sites along two directions
         xs = [c[0] for c in self._coords]
@@ -137,12 +138,16 @@ class SquareTPS(object):
 
     def site_envs(self, site: tuple, inner_bonds=()) -> list:
         r'''
-        return the environment bond weights around a site
+        return the environment bond weights around a site as a list
 
         Parameters
         ----------
         site: tuple, coordinate
         inner_bonds: tuple, optional, the inner bonds will be returned by square root of tensors
+
+        Returns
+        -------
+        envs: tuple[tensor]
         '''
 
         envs = []
@@ -156,6 +161,28 @@ class SquareTPS(object):
 
         return envs
 
+    def absorb_envs(self, t, envs):
+
+        r'''
+        # find the optimal path
+        path_info = oe.contract_path('abcde,Aa,bB,cC,Dd->ABCDe', t, *envs, optimize='optimal')
+        print(path_info)
+        
+        --------------------------------------------------------------------------------
+        scaling        BLAS                current                             remaining
+        --------------------------------------------------------------------------------
+        6           GEMM        Aa,abcde->Abcde                 bB,cC,Dd,Abcde->ABCDe
+        6           TDOT        Abcde,bB->AcdeB                    cC,Dd,AcdeB->ABCDe
+        6           TDOT        AcdeB,cC->AdeBC                       Dd,AdeBC->ABCDe
+        6           TDOT        AdeBC,Dd->ABCDe                          ABCDe->ABCDe)
+        '''
+
+        temp = torch.einsum('Aa,abcde->Abcde', envs[0], t)
+        temp = torch.einsum('abcde,bB->aBcde', temp, envs[1])
+        temp = torch.einsum('abcde,cC->abCde', temp, envs[2])
+
+        return torch.einsum('Dd,abcde->abcDe', envs[3], temp)
+
     def merged_tensor(self, site):
         r'''
         return site tensor merged with square root of link tensors around
@@ -167,11 +194,7 @@ class SquareTPS(object):
 
         envs = self.site_envs(site, inner_bonds=(0, 1, 2, 3))
 
-        temp = torch.einsum('Aa,abcde->Abcde', envs[0], self._site_tensors[site])
-        temp = torch.einsum('abcde,bB->aBcde', temp, envs[1])
-        temp = torch.einsum('abcde,cC->abCde', temp, envs[2])
-
-        return torch.einsum('Dd,abcde->abcDe', envs[3], temp)
+        return self.absorb_envs(self._site_tensors[site], envs)
 
     def simple_update_proj(self, time_evo_mpo: tuple):
         r'''
@@ -181,28 +204,6 @@ class SquareTPS(object):
         ----------
         time_evo_mpo: tuple[tensor], time evolution operator MPO
         '''
-
-        def absorb_envs(t, envs):
-
-            # find the optimal path
-            r'''
-            path_info = oe.contract_path('abcde,Aa,bB,cC,Dd->ABCDe', t, *envs, optimize='optimal')
-            print(path_info)
-            
-            --------------------------------------------------------------------------------
-            scaling        BLAS                current                             remaining
-            --------------------------------------------------------------------------------
-            6           GEMM        Aa,abcde->Abcde                 bB,cC,Dd,Abcde->ABCDe
-            6           TDOT        Abcde,bB->AcdeB                    cC,Dd,AcdeB->ABCDe
-            6           TDOT        AcdeB,cC->AdeBC                       Dd,AdeBC->ABCDe
-            6           TDOT        AdeBC,Dd->ABCDe                          ABCDe->ABCDe)
-            '''
-
-            temp = torch.einsum('Aa,abcde->Abcde', envs[0], t)
-            temp = torch.einsum('abcde,bB->aBcde', temp, envs[1])
-            temp = torch.einsum('abcde,cC->abCde', temp, envs[2])
-
-            return torch.einsum('Dd,abcde->abcDe', envs[3], temp)
 
         cut_off = self._chi
 
@@ -222,9 +223,10 @@ class SquareTPS(object):
                     ]
             # merged tensors
             mts = [
-                    absorb_envs(self._site_tensors[c], tens_env[0]),
-                    absorb_envs(self._site_tensors[cx], tens_env[1])
+                    self.absorb_envs(self._site_tensors[c], tens_env[0]),
+                    self.absorb_envs(self._site_tensors[cx], tens_env[1])
                     ]
+
             # apply the time evolution operator
             #      b,1 E,5
             #      |/
@@ -235,14 +237,14 @@ class SquareTPS(object):
             te_mts.append(torch.einsum('ECe,abcde->abCcdE', time_evo_mpo[0], mts[0]))
             te_mts.append(torch.einsum('AEe,abcde->AabcdE', time_evo_mpo[1], mts[1]))
 
-            # QR and LQ decompositions
+            # QR and LQ decompositions to bring the rest to canonical forms
             q, r = tp.linalg.tqr(te_mts[0], group_dims=((0, 1, 4, 5), (2, 3)), qr_dims=(2, 0))
             q, l = tp.linalg.tqr(te_mts[1], group_dims=((2, 3, 4, 5), (0, 1)), qr_dims=(0, 2))
 
             temp = torch.einsum('abc,bcd->ad', r, l)
             u, s, v = tp.linalg.svd(temp, full_matrices=False)
 
-            # truncate and build projectors
+            # truncate
             ut, st, vt = u[:, :cut_off], s[:cut_off], v[:cut_off, :]
             ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
 
@@ -254,26 +256,26 @@ class SquareTPS(object):
             pr = torch.einsum('abc,cd,de->abe', l, vt_dagger, st_sqrt_inv)
             pl = torch.einsum('ab,bc,cde->ade', st_sqrt_inv, ut_dagger, r)
 
-            # update link
-            old = self._link_tensors[c][0]
+            # update the link tensor
             self._link_tensors[c][0] = (st/torch.linalg.norm(st)).diag()
 
-            # print('su', c)
-            # print(old.diag())
-            # print(self._link_tensors[c][0].diag())
             # apply projectors
             updated_mts = [
                     torch.einsum('abCcde,Ccf->abfde', te_mts[0], pr),
                     torch.einsum('fAa,Aabcde->fbcde', pl, te_mts[1])
                     ]
+
             # remove external environments and update site tensors
+            # replace the connected environment by the updated one
+            tens_env[0][2] = torch.sqrt(st).diag()
+            tens_env[1][0] = torch.sqrt(st).diag()
             tens_env_inv = [
                     [torch.linalg.pinv(m) for m in tens_env[0]],
                     [torch.linalg.pinv(m) for m in tens_env[1]],
                     ]
             updated_ts = [
-                    absorb_envs(updated_mts[0], tens_env_inv[0]),
-                    absorb_envs(updated_mts[1], tens_env_inv[1])
+                    self.absorb_envs(updated_mts[0], tens_env_inv[0]),
+                    self.absorb_envs(updated_mts[1], tens_env_inv[1])
                     ]
             self._site_tensors[c] = updated_ts[0]/torch.linalg.norm(updated_ts[0])
             self._site_tensors[cx] = updated_ts[1]/torch.linalg.norm(updated_ts[1])
@@ -285,9 +287,10 @@ class SquareTPS(object):
                     ]
             # merged tensors
             mts = [
-                    absorb_envs(self._site_tensors[c], tens_env[0]),
-                    absorb_envs(self._site_tensors[cy], tens_env[1])
+                    self.absorb_envs(self._site_tensors[c], tens_env[0]),
+                    self.absorb_envs(self._site_tensors[cy], tens_env[1])
                     ]
+
             # apply the time evolution operator
             #      b,1 E,5
             #      |/
@@ -298,6 +301,8 @@ class SquareTPS(object):
             te_mts.append(torch.einsum('EBe,abcde->aBbcdE', time_evo_mpo[0], mts[0]))
             te_mts.append(torch.einsum('DEe,abcde->abcDdE', time_evo_mpo[1], mts[1]))
 
+            old_wf = torch.einsum('aBbcde,fghBbi->acdefghi', *te_mts)
+
             # QR and LQ decompositions
             q, r = tp.linalg.tqr(te_mts[0], group_dims=((0, 3, 4, 5), (1, 2)), qr_dims=(1, 0))
             q, l = tp.linalg.tqr(te_mts[1], group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
@@ -305,7 +310,7 @@ class SquareTPS(object):
             temp = torch.einsum('abc,bcd->ad', r, l)
             u, s, v = tp.linalg.svd(temp, full_matrices=False)
 
-            # truncate and build projectors
+            # truncate
             ut, st, vt = u[:, :cut_off], s[:cut_off], v[:cut_off, :]
             ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
 
@@ -317,24 +322,27 @@ class SquareTPS(object):
             pr = torch.einsum('abc,cd,de->abe', l, vt_dagger, st_sqrt_inv)
             pl = torch.einsum('ab,bc,cde->ade', st_sqrt_inv, ut_dagger, r)
 
-            # update link
-            old = self._link_tensors[c][1]
+            # update the link tensor
             self._link_tensors[c][1] = (st/torch.linalg.norm(st)).diag()
 
-            # print(torch.linalg.norm(self._link_tensors[c][1]-old))
             # apply projectors
             updated_mts = [
                     torch.einsum('aBbcde,Bbf->afcde', te_mts[0], pr),
                     torch.einsum('fDd,abcDde->abcfe', pl, te_mts[1])
                     ]
+            new_wf = torch.einsum('abcde,fghbi->acdefghi', *updated_mts)
+
             # remove external environments and update site tensors
+            # replace the connected environment by the updated one
+            tens_env[0][1] = torch.sqrt(st).diag()
+            tens_env[1][3] = torch.sqrt(st).diag()
             tens_env_inv = [
                     [torch.linalg.pinv(m) for m in tens_env[0]],
                     [torch.linalg.pinv(m) for m in tens_env[1]],
                     ]
             updated_ts = [
-                    absorb_envs(updated_mts[0], tens_env_inv[0]),
-                    absorb_envs(updated_mts[1], tens_env_inv[1])
+                    self.absorb_envs(updated_mts[0], tens_env_inv[0]),
+                    self.absorb_envs(updated_mts[1], tens_env_inv[1])
                     ]
             self._site_tensors[c] = updated_ts[0]/torch.linalg.norm(updated_ts[0])
             self._site_tensors[cy] = updated_ts[1]/torch.linalg.norm(updated_ts[1])
@@ -354,24 +362,56 @@ class SquareTPS(object):
         for c in self._coords:
             mts.update({c: self.merged_tensor(c)})
 
-        # measure on four bonds
+        # measure on all bonds
+        res = []
         for c in self._coords:
 
             # forward sites along two directions
             cx = (c[0]+1) % self._nx, c[1]
             cy = c[0], (c[1]+1) % self._ny
-            cxy = (c[0]+1) % self._nx, (c[1]+1) % self._ny
 
-            # envs = self._link_tensors[cx][0], self._link_tensors[c][1], self._link_tensors[cy][1], self._link_tensors[cx][1], self._link_tensors[cx][0], self._link_tensors[cxy][1]
+            # X-direction
+            mts_conj = {}
 
-            envs = self.site_envs(site,)
-       
-            path_info = oe.contract_path(
-                    'ABCDE,Ee,abcde,Aa,Bb,Dd,CFGHI,Ii,cfghi,Ff,Gg,Hh', 
-                    mts[c].conj(), ops[0], mts[c], envs[0], envs[1], envs[2],
-                    mts[cx].conj(), ops[1], mts[cx], envs[3], envs[4], envs[5],
-                    optimize='optimal')
+            envs = self.site_envs(c)
+            # replace the connected bond by an identity
+            envs[2] = torch.eye(self._bond_dim)
+            temp = self.absorb_envs(mts[c], envs).conj()
+            # absorb the operator
+            temp = torch.einsum('abcde,eE->abcdE', temp, ops[0])
+            mts_conj.update({c: temp})
 
-            print(path_info)
+            envs = self.site_envs(cx)
+            envs[0] = torch.eye(self._bond_dim)
+            temp = self.absorb_envs(mts[cx], envs).conj()
+            temp = torch.einsum('abcde,eE->abcdE', temp, ops[1])
+            mts_conj.update({cx: temp})
 
-        return 1
+            temp = torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c])
+            mea = torch.einsum('Aa,Abcde,abcde', temp, mts_conj[cx], mts[cx])
+
+            res.append(mea)
+
+            # Y-direction
+            mts_conj = {}
+
+            envs = self.site_envs(c)
+            # replace the connected bond by an identity
+            envs[1] = torch.eye(self._bond_dim)
+            temp = self.absorb_envs(mts[c], envs).conj()
+            # absorb the operator
+            temp = torch.einsum('abcde,eE->abcdE', temp, ops[0])
+            mts_conj.update({c: temp})
+
+            envs = self.site_envs(cy)
+            envs[3] = torch.eye(self._bond_dim)
+            temp = self.absorb_envs(mts[cy], envs).conj()
+            temp = torch.einsum('abcde,eE->abcdE', temp, ops[1])
+            mts_conj.update({cy: temp})
+
+            temp = torch.einsum('aBcde,abcde->Bb', mts_conj[c], mts[c])
+            mea = torch.einsum('Dd,abcDe,abcde', temp, mts_conj[cy], mts[cy])
+
+            res.append(mea)
+
+        return torch.mean(torch.as_tensor(res))
