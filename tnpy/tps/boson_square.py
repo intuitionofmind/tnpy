@@ -382,7 +382,7 @@ class SquareTPS(object):
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cx)
-            envs[0] = torch.eye(self._bond_dim)
+            envs[0] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[cx], envs).conj()
             temp = torch.einsum('abcde,eE->abcdE', temp, ops[1])
             mts_conj.update({cx: temp})
@@ -397,7 +397,7 @@ class SquareTPS(object):
 
             envs = self.site_envs(c)
             # replace the connected bond by an identity
-            envs[1] = torch.eye(self._bond_dim)
+            envs[1] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[c], envs).conj()
             # absorb the operator
             temp = torch.einsum('abcde,eE->abcdE', temp, ops[0])
@@ -414,4 +414,79 @@ class SquareTPS(object):
 
             res.append(mea)
 
+        return torch.mean(torch.as_tensor(res))
+
+    def beta_twobody_measure_op(self, op):
+        r'''
+        measure bond energy on beta lattice
+
+        Parameters
+        ----------
+        op: tensor, twobody operator
+        '''
+
+        # SVD to MPO
+        u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
+        ss = torch.sqrt(s).diag()
+        us = torch.einsum('Aa,abc->Abc', ss, u)
+        sv = torch.einsum('Aa,abc->Abc', ss, v)
+
+        mpo = us, sv
+
+        mts = {}
+        for c in self._coords:
+            mts.update({c: self.merged_tensor(c)})
+
+        # measure on all bonds
+        res = []
+        for c in self._coords:
+
+            # forward sites along two directions
+            cx = (c[0]+1) % self._nx, c[1]
+            cy = c[0], (c[1]+1) % self._ny
+
+            # X-direction
+            mts_conj = {}
+
+            envs = self.site_envs(c)
+            # replace the connected bond by an identity
+            envs[2] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[c], envs).conj()
+            # absorb the operator
+            mts_conj.update({c: temp})
+
+            envs = self.site_envs(cx)
+            envs[0] = torch.eye(self._bond_dim)
+            temp = self.absorb_envs(mts[cx], envs).conj()
+            mts_conj.update({cx: temp})
+
+            # sandwich MPO
+            sw_0 = torch.einsum('abCdE,fEe,abcde->Cfc', mts_conj[c], mpo[0], mts[c])
+            sw_1 = torch.einsum('AbcdE,fEe,abcde->Afa', mts_conj[cx], mpo[1], mts[cx])
+            mea = torch.einsum('abc,abc', sw_0, sw_1)
+
+            res.append(mea)
+
+            # Y-direction
+            mts_conj = {}
+
+            envs = self.site_envs(c)
+            # replace the connected bond by an identity
+            envs[1] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[c], envs).conj()
+            # absorb the operator
+            mts_conj.update({c: temp})
+
+            envs = self.site_envs(cy)
+            envs[3] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[cy], envs).conj()
+            mts_conj.update({cy: temp})
+
+            sw_0 = torch.einsum('aBcdE,fEe,abcde->Bfb', mts_conj[c], mpo[0], mts[c])
+            sw_1 = torch.einsum('abcDE,fEe,abcde->Dfd', mts_conj[cy], mpo[1], mts[cy])
+            mea = torch.einsum('abc,abc', sw_0, sw_1)
+
+            res.append(mea)
+
+        # print(res)
         return torch.mean(torch.as_tensor(res))
