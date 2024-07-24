@@ -34,7 +34,7 @@ class SquareXYZ(object):
             [0.0, 1.0],
             [1.0, 0.0]])
 
-        self._sy = torch.tensor([
+        self._sy = 0.5*torch.tensor([
             [0.0, -1.j],
             [1.j, 0.0]]).cdouble()
 
@@ -65,6 +65,16 @@ class SquareXYZ(object):
 
         return self._sz
 
+    @property
+    def sp(self):
+
+        return self._sp
+
+    @property
+    def sm(self):
+
+        return self._sm
+
     def twobody_ham(self):
         r'''
         two-body Hamiltonian operator
@@ -90,18 +100,28 @@ class SquareXYZ(object):
         # 1   3
         ham += self._Jz*torch.kron(self._sz, self._sz).reshape(ham_shape).permute(0, 2, 1, 3)
 
-        ham += 0.5*(self._Jx-self._Jy)*torch.kron(self._sp, self._sp).reshape(ham_shape).permute(0, 2, 1, 3)
-        ham += 0.5*(self._Jx-self._Jy)*torch.kron(self._sm, self._sm).reshape(ham_shape).permute(0, 2, 1, 3)
+        ham += 0.25*(self._Jx - self._Jy)*torch.kron(self._sp, self._sp).reshape(ham_shape).permute(0, 2, 1, 3)
+        ham += 0.25*(self._Jx - self._Jy)*torch.kron(self._sm, self._sm).reshape(ham_shape).permute(0, 2, 1, 3)
 
-        ham += 0.5*(self._Jx+self._Jy)*torch.kron(self._sp, self._sm).reshape(ham_shape).permute(0, 2, 1, 3)
-        ham += 0.5*(self._Jx+self._Jy)*torch.kron(self._sm, self._sp).reshape(ham_shape).permute(0, 2, 1, 3)
+        ham += 0.25*(self._Jx + self._Jy)*torch.kron(self._sp, self._sm).reshape(ham_shape).permute(0, 2, 1, 3)
+        ham += 0.25*(self._Jx + self._Jy)*torch.kron(self._sm, self._sp).reshape(ham_shape).permute(0, 2, 1, 3)
+
+        '''
+        # directly construct the Hamiltonian
+        test_ham = torch.zeros(ham_shape).cdouble()
+        test_ham += self._Jz*torch.kron(self._sz, self._sz).reshape(ham_shape).permute(0, 2, 1, 3)
+        test_ham += self._Jy*torch.kron(self._sy, self._sy).reshape(ham_shape).permute(0, 2, 1, 3)
+        test_ham += self._Jx*torch.kron(self._sx, self._sx).reshape(ham_shape).permute(0, 2, 1, 3)
+
+        print('test Ham:', torch.linalg.norm(test_ham-ham.cdouble()))
+        '''
 
         if self._cflag:
             return ham.cdouble()
         else:
             return ham
 
-    def twobody_img_time_evo(self, ham: torch.tensor, delta: float):
+    def twobody_img_time_evo(self, delta: float):
         r'''
         two-body time evolution operator
 
@@ -111,6 +131,7 @@ class SquareXYZ(object):
         delta: float, time step size
         '''
 
+        ham = self.twobody_ham()
         ham_mat = ham.reshape(self._dim_phys**2, self._dim_phys**2)
 
         return torch.linalg.matrix_exp(-delta*ham_mat).reshape(ham.shape)
