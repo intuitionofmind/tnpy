@@ -218,13 +218,11 @@ class SquareTPS(object):
             #   |     |
             tens_env = [
                     self.site_envs(c, inner_bonds=(2,)),
-                    self.site_envs(cx, inner_bonds=(0,))
-                    ]
+                    self.site_envs(cx, inner_bonds=(0,))]
             # merged tensors
             mts = [
                     self.absorb_envs(self._site_tensors[c], tens_env[0]),
-                    self.absorb_envs(self._site_tensors[cx], tens_env[1])
-                    ]
+                    self.absorb_envs(self._site_tensors[cx], tens_env[1])]
 
             # apply the time evolution operator
             #      b,1 E,5
@@ -252,6 +250,7 @@ class SquareTPS(object):
             sst_inv = (1.0 / sst).diag()
 
             if self._cflag:
+                st = st.cdouble()
                 sst_inv = sst_inv.cdouble()
 
             # build projectors
@@ -259,39 +258,35 @@ class SquareTPS(object):
             pl = torch.einsum('ab,bcd->acd', sst_inv @ ut_dagger, r)
 
             # update the link tensor
-            self._link_tensors[c][0] = (st/torch.linalg.norm(st)).diag()
+            self._link_tensors[c][0] = (st / torch.linalg.norm(st)).diag()
 
             # apply projectors
             updated_mts = [
                     torch.einsum('abCcde,Ccf->abfde', te_mts[0], pr),
-                    torch.einsum('fAa,Aabcde->fbcde', pl, te_mts[1])
-                    ]
+                    torch.einsum('fAa,Aabcde->fbcde', pl, te_mts[1])]
 
             # remove external environments and update site tensors
             # replace the connected environment by the updated one
-            tens_env[0][2] = sst.diag()
-            tens_env[1][0] = sst.diag()
+            tens_env[0][2], tens_env[1][0] = sst.diag(), sst.diag()
+
             tens_env_inv = [
                     [torch.linalg.pinv(m) for m in tens_env[0]],
-                    [torch.linalg.pinv(m) for m in tens_env[1]],
-                    ]
+                    [torch.linalg.pinv(m) for m in tens_env[1]]]
             updated_ts = [
                     self.absorb_envs(updated_mts[0], tens_env_inv[0]),
-                    self.absorb_envs(updated_mts[1], tens_env_inv[1])
-                    ]
-            self._site_tensors[c] = updated_ts[0]/torch.linalg.norm(updated_ts[0])
-            self._site_tensors[cx] = updated_ts[1]/torch.linalg.norm(updated_ts[1])
+                    self.absorb_envs(updated_mts[1], tens_env_inv[1])]
+
+            self._site_tensors[c] = updated_ts[0] / torch.linalg.norm(updated_ts[0])
+            self._site_tensors[cx] = updated_ts[1] / torch.linalg.norm(updated_ts[1])
 
             # Y-direction
             tens_env = [
                     self.site_envs(c, inner_bonds=(1,)),
-                    self.site_envs(cy, inner_bonds=(3,))
-                    ]
+                    self.site_envs(cy, inner_bonds=(3,))]
             # merged tensors
             mts = [
                     self.absorb_envs(self._site_tensors[c], tens_env[0]),
-                    self.absorb_envs(self._site_tensors[cy], tens_env[1])
-                    ]
+                    self.absorb_envs(self._site_tensors[cy], tens_env[1])]
 
             # apply the time evolution operator
             #      b,1 E,5
@@ -302,8 +297,6 @@ class SquareTPS(object):
             te_mts = []
             te_mts.append(torch.einsum('EBe,abcde->aBbcdE', time_evo_mpo[0], mts[0]))
             te_mts.append(torch.einsum('DEe,abcde->abcDdE', time_evo_mpo[1], mts[1]))
-
-            old_wf = torch.einsum('aBbcde,fghBbi->acdefghi', *te_mts)
 
             # QR and LQ decompositions
             q, r = tp.linalg.tqr(te_mts[0], group_dims=((0, 3, 4, 5), (1, 2)), qr_dims=(1, 0))
@@ -319,34 +312,38 @@ class SquareTPS(object):
             sst = torch.sqrt(st)
             sst_inv = (1.0 / sst).diag()
 
+            if self._cflag:
+                st = st.cdouble()
+                sst_inv = sst_inv.cdouble()
+
             # build projectors
             pr = torch.einsum('abc,cd->abd', l, vt_dagger @ sst_inv)
             pl = torch.einsum('ab,bcd->acd', sst_inv @ ut_dagger, r)
 
             # update the link tensor
-            self._link_tensors[c][1] = (st/torch.linalg.norm(st)).diag()
+            self._link_tensors[c][1] = (st / torch.linalg.norm(st)).diag()
 
             # apply projectors
             updated_mts = [
                     torch.einsum('aBbcde,Bbf->afcde', te_mts[0], pr),
-                    torch.einsum('fDd,abcDde->abcfe', pl, te_mts[1])
-                    ]
-            new_wf = torch.einsum('abcde,fghbi->acdefghi', *updated_mts)
+                    torch.einsum('fDd,abcDde->abcfe', pl, te_mts[1])]
+
+            # two-site wavefunction
+            # wf = torch.einsum('abcde,fghbi->acdefghi', *updated_mts)
 
             # remove external environments and update site tensors
             # replace the connected environment by the updated one
-            tens_env[0][1] = sst.diag()
-            tens_env[1][3] = sst.diag()
+            tens_env[0][1], tens_env[1][3] = sst.diag(), sst.diag()
+
             tens_env_inv = [
                     [torch.linalg.pinv(m) for m in tens_env[0]],
-                    [torch.linalg.pinv(m) for m in tens_env[1]],
-                    ]
+                    [torch.linalg.pinv(m) for m in tens_env[1]]]
             updated_ts = [
                     self.absorb_envs(updated_mts[0], tens_env_inv[0]),
-                    self.absorb_envs(updated_mts[1], tens_env_inv[1])
-                    ]
-            self._site_tensors[c] = updated_ts[0]/torch.linalg.norm(updated_ts[0])
-            self._site_tensors[cy] = updated_ts[1]/torch.linalg.norm(updated_ts[1])
+                    self.absorb_envs(updated_mts[1], tens_env_inv[1])]
+
+            self._site_tensors[c] = updated_ts[0] / torch.linalg.norm(updated_ts[0])
+            self._site_tensors[cy] = updated_ts[1] / torch.linalg.norm(updated_ts[1])
 
         return 1
 
