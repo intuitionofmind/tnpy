@@ -533,9 +533,9 @@ class SquareTPS(object):
             cs = [torch.rand(rho, rho) for i in range(4)]
 
             # boundaries
-            upper_es = [torch.rand(rho, rho, self._chi, self._chi) for i in range(self._nx)]
-            lower_es = deepcopy(upper_es)
-            left_es = [torch.rand(rho, rho, self._chi, self._chi) for i in range(self._ny)]
+            up_es = [torch.rand(rho, rho, self._chi, self._chi) for i in range(self._nx)]
+            down_es = deepcopy(up_es)
+            left_es = [torch.rand(rho, rho, self._chi, self._chi) for j in range(self._ny)]
             right_es = deepcopy(left_es)
 
         # merged tensors as MPO
@@ -547,10 +547,12 @@ class SquareTPS(object):
 
         # trace the singular values
         su, sd, sl, sr = [], [], [], []
+
+        # one RG step: merge a whole unit cell into four boundary MPS, respectively
         for r in range(num_rg):
-            # upper MPS
-            print('upper')
-            mps = deepcopy(upper_es)
+            # up MPS
+            print('up')
+            mps = deepcopy(up_es)
             mps.insert(0, cs[2])
             mps.append(cs[3])
 
@@ -559,22 +561,129 @@ class SquareTPS(object):
             # reversed order from up to down
             for j in range(self._ny):
 
-                # head and tail
+                # head and tail by edges
                 mps[0] = torch.einsum('ab,cbde->adec', mps[0], left_es[-(1+j)])
                 mps[-1] = torch.einsum('ab,cbde->adec', mps[-1], right_es[-(1+j)])
-                
+            
+                # double tensor MPO
                 for i in range(self._nx):
                     # coordinate for current site
                     c = (i, self._ny-1-j)
                     print(c)
-                    # print(c)
-                    # f- -g
-                    # A-*-C
-                    # a- -c
-                    #  / \
-                    #  D d
                     temp = torch.einsum('ABCDe,fgBb->ACDefgb', mts_conj[c], mps[i+1])
                     mps[i+1] = torch.einsum('ACDefgb,abcde->fAagCcDd', temp, mts[c])
+
+                # compress this MPS
+                # QR and LQ factorizations
+
+                # residual tensors:
+                # R:
+                #     --1
+                # 0--*--2
+                #     --3
+                # L:
+                # 0--
+                # 1--*--3
+                # 2--
+
+                rs, ls = [], []
+
+                # QR from left to right
+                temp = mps[0]
+                q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+                rs.append(r)
+                
+                for i in range(self._nx):
+                    # merge R in the next tensor
+                    temp = torch.einsum('abcd,bcdefghi->aefghi', r, mps[i+1])
+                    q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+                    rs.append(r)
+
+                # LQ from right to left
+                temp = mps[-1]
+                q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+                ls.append(l)
+
+                for i in range(self._nx):
+                    # merge L into the previous tensor
+                    temp = torch.einsum('abcdefgh,defi->abcigh', mps[-(2+i)], l)
+                    q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+                    ls.append(l)
+                
+                ls.reverse()
+
+                # build projectors on each inner bond
+                # there are (nx+1) inner bonds
+                # left-, right- means on each bond
+                prs, pls = [], []
+
+                sts = [] # record all singular values in the MPS
+                for i in range(self._nx+1):
+                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]), full_matrices=False)
+                    # truncate
+                    ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
+                    ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+                    # inverse of square root
+                    sst_inv = (1.0 / torch.sqrt(st)).diag()
+
+                    sts.append(st)
+
+                    if self._cflag:
+                        sst_inv = sst_inv.cdouble()
+
+                    pr = torch.einsum('abcd,de->abce', ls[i], vt_dagger @ sst_inv)
+                    pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs[i])
+                    prs.append(pr)
+                    pls.append(pl)
+
+                su.append(sts)
+
+                # apply projectors to compress the MPS
+                # head and tail
+                mps[0]= torch.einsum('abcd,abce->ed', mps[0], prs[0])
+                mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mps[-1])
+
+                for i in range(self._nx):
+                    mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mps[i+1], prs[i+1])
+
+                for t in mps:
+                    print(t.shape)
+
+                # update CTMRG tensors
+                cs[2] = mps[0] / torch.linalg.norm(mps[0])
+                cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
+
+                for i in range(self._nx):
+                    up_es[i] = mps[i+1] / torch.linalg.norm(mps[i+1])
+
+            if len(su) > 2:
+                print(len(su))
+                # unit cell size
+                new_s, old_s = su[-1], su[-(1+self._ny)]
+                diff = 0.0
+                for i in range(self._nx+1):
+                    diff += torch.linalg.norm(new_s[i]-old_s[i])
+                print('up MPS singular value changing:', diff)
+
+            # down MPS
+            print('down')
+            mps = deepcopy(down_es)
+            mps.insert(0, cs[0])
+            mps.append(cs[1])
+
+            for j in range(self._ny):
+
+                # merge MPO into the boundary MPS
+                # inner bonds are "thickened"
+                # head and tail
+                mps[0] = torch.einsum('ab,bcde->adec', mps[0], left_es[j])
+                mps[-1] = torch.einsum('ab,bcde->adec', mps[-1], right_es[j])
+                
+                for i in range(self._nx):
+                    c = (i, j)
+                    print(c)
+                    temp = torch.einsum('ABCDe,fgDd->ABCefgd', mts_conj[c], mps[i+1])
+                    mps[i+1] = torch.einsum('ABCefgd,abcde->fAagCcBb', temp, mts[c])
 
                 # compress this MPS
                 # QR and LQ factorizations
@@ -613,118 +722,6 @@ class SquareTPS(object):
                 
                 ls.reverse()
 
-                # build projectors on each inner bond
-                # there are (nx+1) inner bonds
-                # left-, right- means on each bond
-                prs, pls = [], []
-
-                sts = []
-                for i in range(self._nx+1):
-                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]), full_matrices=False)
-                    # truncate
-                    ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
-                    ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
-                    # inverse of square root
-                    sst_inv = (1.0 / torch.sqrt(st)).diag()
-
-                    sts.append(st)
-
-                    if self._cflag:
-                        sst_inv = sst_inv.cdouble()
-
-                    pr = torch.einsum('abcd,de->abce', ls[i], vt_dagger @ sst_inv)
-                    pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs[i])
-                    prs.append(pr)
-                    pls.append(pl)
-
-                su.append(sts)
-
-                # apply projectors to compress the MPS
-                # head and tail
-                mps[0]= torch.einsum('abcd,abce->ed', mps[0], prs[0])
-                mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mps[-1])
-
-                for i in range(self._nx):
-                    mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mps[i+1], prs[i+1])
-
-                for t in mps:
-                    print(t.shape)
-
-                # update CTMRG tensors
-                cs[2] = mps[0] / torch.linalg.norm(mps[0])
-                cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
-
-                for i in range(self._nx):
-                    upper_es[i] = mps[i+1] / torch.linalg.norm(mps[i+1])
-
-            if len(su) > 2:
-                # unit cell size
-                new_sts, old_sts = su[-1], su[-3]
-                for i in range(self._nx+1):
-                    print('upper MPS diff:', i, torch.linalg.norm(new_sts[i]-old_sts[i]))
-
-            # lower MPS
-            print('lower')
-            mps = deepcopy(lower_es)
-            mps.insert(0, cs[0])
-            mps.append(cs[1])
-
-            for j in range(self._ny):
-
-                # merge MPO into the boundary MPS
-                # inner bonds are "thickened"
-                # head and tail
-                mps[0] = torch.einsum('ab,acde->cbde', mps[0], left_es[j])
-                mps[-1] = torch.einsum('ab,bcde->adec', mps[-1], right_es[j])
-                
-                for i in range(self._nx):
-                    # coordinate for current site
-                    c = (i, j)
-                    print(c)
-                    # f- -g
-                    # A-*-C
-                    # a- -c
-                    #  / \
-                    #  D d
-                    temp = torch.einsum('ABCDe,fgDd->ABCefgd', mts_conj[c], mps[i+1])
-                    mps[i+1] = torch.einsum('ABCefgd,abcde->fAagCcBb', temp, mts[c])
-
-                # compress this MPS
-                # QR and LQ factorizations
-
-                # residual tensors:
-                #        --1
-                # R: 0--*--2
-                #        --3
-                #
-                #    0--
-                # L: 1--*--3
-                #    2--
-
-                rs, ls = [], []
-
-                # QR from left to right
-                temp = mps[0]
-                q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 0))
-                rs.append(r)
-                
-                for i in range(self._nx):
-                    temp = torch.einsum('abcd,bcdefghi->aefghi', r, mps[i+1])
-                    q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
-                    rs.append(r)
-
-                # LQ from right to left
-                temp = mps[-1]
-                q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
-                ls.append(l)
-
-                for i in range(self._nx):
-                    temp = torch.einsum('abcdefgh,defi->abcigh', mps[-(2+i)], l)
-                    q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
-                    ls.append(l)
-                
-                ls.reverse()
-
                 # build projectors
                 prs, pls = [], []
                 for i in range(self._nx+1):
@@ -738,14 +735,14 @@ class SquareTPS(object):
                     if self._cflag:
                         sst_inv = sst_inv.cdouble()
 
-                    pr = torch.einsum('abcd,de,ef->abcf', ls[i], vt_dagger, sst_inv)
-                    pl = torch.einsum('ab,bc,cdef->adef', sst_inv, ut_dagger, rs[i])
+                    pr = torch.einsum('abcd,de->abce', ls[i], vt_dagger @ sst_inv)
+                    pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs[i])
                     prs.append(pr)
                     pls.append(pl)
 
                 # apply projectors to compress the MPS
                 # head and tail
-                mps[0]= torch.einsum('abcd,bcde->ae', mps[0], prs[0])
+                mps[0]= torch.einsum('abcd,abce->ed', mps[0], prs[0])
                 mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mps[-1])
 
                 for i in range(self._nx):
@@ -759,7 +756,7 @@ class SquareTPS(object):
                 cs[1] = mps[-1] / torch.linalg.norm(mps[-1])
 
                 for i in range(self._nx):
-                    lower_es[i] = mps[i+1] / torch.linalg.norm(mps[i+1])
+                    down_es[i] = mps[i+1] / torch.linalg.norm(mps[i+1])
 
             # left MPS
             print('left')
@@ -767,29 +764,23 @@ class SquareTPS(object):
             mps.insert(0, cs[0])
             mps.append(cs[2])
 
+            # merge MPO into the boundary MPS
+            # inner bonds are "thickened"
             for i in range(self._nx):
 
-                # merge MPO into the boundary MPS
-                # inner bonds are "thickened"
                 # head and tail
-                mps[0] = torch.einsum('ab,bcde->adec', mps[0], lower_es[i])
-                mps[-1] = torch.einsum('ab,acde->cbde', mps[-1], upper_es[i])
+                mps[0] = torch.einsum('ab,acde->cbde', mps[0], down_es[i])
+                mps[-1] = torch.einsum('ab,acde->cbde', mps[-1], up_es[i])
                 
                 for j in range(self._ny):
                     # coordinate for current site
                     c = (i, j)
                     print(c)
-                    # f- -g
-                    # A-*-C
-                    # a- -c
-                    #  / \
-                    #  D d
                     temp = torch.einsum('ABCDe,fgAa->BCDefga', mts_conj[c], mps[j+1])
                     mps[j+1] = torch.einsum('BCDefga,abcde->fDdgBbCc', temp, mts[c])
 
                 # compress this MPS
                 # QR and LQ factorizations
-
                 # residual tensors:
                 # R
                 # 1 2 3 
@@ -808,7 +799,7 @@ class SquareTPS(object):
 
                 # QR from botton to top
                 temp = mps[0]
-                q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 0))
+                q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(0, 0))
                 rs.append(r)
                 
                 for j in range(self._ny):
@@ -841,15 +832,15 @@ class SquareTPS(object):
                     if self._cflag:
                         sst_inv = sst_inv.cdouble()
 
-                    pr = torch.einsum('abcd,de,ef->abcf', ls[j], vt_dagger, sst_inv)
-                    pl = torch.einsum('ab,bc,cdef->adef', sst_inv, ut_dagger, rs[j])
+                    pr = torch.einsum('abcd,de->abce', ls[j], vt_dagger @ sst_inv)
+                    pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs[j])
                     prs.append(pr)
                     pls.append(pl)
 
                 # apply projectors to compress the MPS
                 # head and tail
-                mps[0]= torch.einsum('abcd,abce->ed', mps[0], prs[0])
-                mps[-1] = torch.einsum('abcd,ebcd->ae', pls[-1], mps[-1])
+                mps[0]= torch.einsum('abcd,bcde->ae', mps[0], prs[0])
+                mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mps[-1])
 
                 for j in range(self._ny):
                     mps[j+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j], mps[j+1], prs[j+1])
@@ -872,29 +863,26 @@ class SquareTPS(object):
 
             for i in range(self._nx):
 
-                # merge MPO into the boundary MPS
-                # inner bonds are "thickened"
-                # head and tail
-                mps[0] = torch.einsum('ab,cade->cbde', mps[0], lower_es[-(1+i)])
-                mps[-1] = torch.einsum('ab,cade->cbde', mps[-1], upper_es[-(1+i)])
+                mps[0] = torch.einsum('abcd,be->aecd', down_es[-(1+i)], mps[0])
+                mps[-1] = torch.einsum('abcd,be->aecd', up_es[-(1+i)], mps[-1])
                 
                 for j in range(self._ny):
                     # coordinate for current site
                     c = (self._nx-1-i, j)
-                    print(c)
+                    # print(c)
                     temp = torch.einsum('ABCDe,fgCc->ABDefgc', mts_conj[c], mps[j+1])
                     mps[j+1] = torch.einsum('ABDefgc,abcde->fDdgBbAa', temp, mts[c])
 
                 # compress this MPS
                 # QR and LQ factorizations
                 # residual tensors:
-                # R
+                # R:
                 # 1 2 3 
                 # | | |
                 #   *
                 #   |
                 #   0
-                # L
+                # L:
                 #   3
                 #   |
                 #   *
@@ -938,15 +926,15 @@ class SquareTPS(object):
                     if self._cflag:
                         sst_inv = sst_inv.cdouble()
 
-                    pr = torch.einsum('abcd,de,ef->abcf', ls[j], vt_dagger, sst_inv)
-                    pl = torch.einsum('ab,bc,cdef->adef', sst_inv, ut_dagger, rs[j])
+                    pr = torch.einsum('abcd,de->abce', ls[j], vt_dagger @ sst_inv)
+                    pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs[j])
                     prs.append(pr)
                     pls.append(pl)
 
                 # apply projectors to compress the MPS
                 # head and tail
                 mps[0]= torch.einsum('abcd,bcde->ae', mps[0], prs[0])
-                mps[-1] = torch.einsum('abcd,ebcd->ae', pls[-1], mps[-1])
+                mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mps[-1])
 
                 for j in range(self._ny):
                     mps[j+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j], mps[j+1], prs[j+1])
