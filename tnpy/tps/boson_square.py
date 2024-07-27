@@ -513,7 +513,8 @@ class SquareTPS(object):
 
     def ctmrg(self, rho: int, num_rg=10, init=None):
         r'''
-        corner transfer matrix renormalization group method to contract
+        corner transfer matrix renormalization group
+        to find boundary fixed points (MPS) of this infinite TN
 
         Parameters
         ----------
@@ -525,6 +526,12 @@ class SquareTPS(object):
         |     / \     |
         1    2   3    1
 
+
+
+        1    2   3    1
+        |     \ /     |
+        *-0  0-*-1  0-*
+        C0            C1
         '''
 
         if init is None:
@@ -532,7 +539,7 @@ class SquareTPS(object):
             # corners
             cs = [torch.rand(rho, rho) for i in range(4)]
 
-            # boundaries
+            # edges
             up_es = [torch.rand(rho, rho, self._chi, self._chi) for i in range(self._nx)]
             down_es = deepcopy(up_es)
             left_es = [torch.rand(rho, rho, self._chi, self._chi) for j in range(self._ny)]
@@ -545,10 +552,10 @@ class SquareTPS(object):
             mts.update({c: temp})
             mts_conj.update({c: temp.conj()})
 
-        # trace the singular values
+        # used to record singular values
         su, sd, sl, sr = [], [], [], []
 
-        # one RG step: merge a whole unit cell into four boundary MPS, respectively
+        # one RG step: merge a whole unit cell into four boundaries, respectively
         for r in range(num_rg):
             # up MPS
             print('up')
@@ -782,13 +789,13 @@ class SquareTPS(object):
                 # compress this MPS
                 # QR and LQ factorizations
                 # residual tensors:
-                # R
+                # R:
                 # 1 2 3 
                 # | | |
                 #   *
                 #   |
                 #   0
-                # L
+                # L:
                 #   3
                 #   |
                 #   *
@@ -845,9 +852,6 @@ class SquareTPS(object):
                 for j in range(self._ny):
                     mps[j+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j], mps[j+1], prs[j+1])
 
-                for t in mps:
-                    print(t.shape)
-
                 # update CTMRG tensors
                 cs[0] = mps[0] / torch.linalg.norm(mps[0])
                 cs[2] = mps[-1] / torch.linalg.norm(mps[-1])
@@ -875,20 +879,6 @@ class SquareTPS(object):
 
                 # compress this MPS
                 # QR and LQ factorizations
-                # residual tensors:
-                # R:
-                # 1 2 3 
-                # | | |
-                #   *
-                #   |
-                #   0
-                # L:
-                #   3
-                #   |
-                #   *
-                # | | |
-                # 0 1 2 
-
                 rs, ls = [], []
 
                 # QR from botton to top
@@ -939,14 +929,36 @@ class SquareTPS(object):
                 for j in range(self._ny):
                     mps[j+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j], mps[j+1], prs[j+1])
 
-                for t in mps:
-                    print(t.shape)
-
                 # update CTMRG tensors
                 cs[1] = mps[0] / torch.linalg.norm(mps[0])
                 cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
 
                 for j in range(self._ny):
                     right_es[j] = mps[j+1] / torch.linalg.norm(mps[j+1])
+
+        return cs, up_es, down_es, left_es, right_es
+
+    def ctm_twobody_measure(self, op, ctm_tensors: tuple):
+        r'''
+        measure a twobody operator by CTMRG 
+
+        Parameters
+        ----------
+        op: tensor, twobody operator
+        ctm_tensors: tuple, corner transfer matrix tensors from CTMRG
+
+        '''
+
+        cs, up_es, down_es, left_es, right_es = ctm_tensors
+
+        # SVD to MPO
+        u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
+        ss = torch.sqrt(s).diag()
+        us = torch.einsum('Aa,abc->Abc', ss, u)
+        sv = torch.einsum('Aa,abc->Abc', ss, v)
+
+        mpo = us, sv
+
+        # horizontal
 
         return 1
