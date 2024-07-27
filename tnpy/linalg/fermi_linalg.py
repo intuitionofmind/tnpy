@@ -186,17 +186,18 @@ def gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
 
     # shape of new dims from SVD
     svd_shape = min(mat_e.shape), min(mat_o.shape)
+
     if cut_off is not None:
         # separate truncation in even and odd sectors, respectively
         if isinstance(cut_off, tuple):
             svd_shape = min(cut_off[0], svd_shape[0]), min(cut_off[1], svd_shape[1])
+            # print(svd_shape)
+
         # overall truncation by putting even and odd sectors together
         elif isinstance(cut_off, int):
             # cat two sectors
             s = torch.cat((se, so), dim=0)
             s_indices = torch.argsort(s, descending=True)[:cut_off]
-            # ss = torch.sort(s, descending=True, stable=True)
-            # remaining_indices = ss.indices[:cut_off]
             ne, no = 0, 0
             for d in s_indices:
                 # count odd sector
@@ -206,7 +207,6 @@ def gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
                 else:
                     ne += 1
             svd_shape = ne, no
-            # svd_shape = 8, 6
         else:
             raise TypeError('input cut_off type is not valid')
 

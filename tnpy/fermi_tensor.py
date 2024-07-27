@@ -636,10 +636,11 @@ class GTensor(Z2gTensor):
         convert blocks of this GTensor to complex128
         '''
 
+        new_blocks = {}
         for k, v in self._blocks.items():
-            self._blocks[k] = v.cdouble()
+            new_blocks[k] = v.cdouble()
 
-        self._dtype = tuple(self._blocks.values())[0].dtype
+        return GTensor(dual=self._dual, shape=self._shape, blocks=new_blocks, cflag=True)
 
     def conj(self, reverse=False):
         r'''

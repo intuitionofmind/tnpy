@@ -207,13 +207,10 @@ class SquareTPS(object):
         time_evo_mpo: tuple[tensor], time evolution operator MPO
         '''
 
-        cut_off = self._chi
-
         for c in self._coords:
 
-            # forward sites along two directions
+            # forward sites
             cx = (c[0]+1) % self._nx, c[1]
-            cy = c[0], (c[1]+1) % self._ny
 
             # X-direction
             #   |     |
@@ -245,7 +242,7 @@ class SquareTPS(object):
             u, s, v = tp.linalg.svd(temp, full_matrices=False)
 
             # truncate
-            ut, st, vt = u[:, :cut_off], s[:cut_off], v[:cut_off, :]
+            ut, st, vt = u[:, :self._chi], s[:self._chi], v[:self._chi, :]
             ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
 
             sst = torch.sqrt(st)
@@ -284,6 +281,7 @@ class SquareTPS(object):
 
             # Y-direction
             if self._ny > 1:
+                cy = c[0], (c[1]+1) % self._ny
 
                 tens_env = [
                         self.site_envs(c, inner_bonds=(1,)),
@@ -311,7 +309,7 @@ class SquareTPS(object):
                 u, s, v = tp.linalg.svd(temp, full_matrices=False)
 
                 # truncate
-                ut, st, vt = u[:, :cut_off], s[:cut_off], v[:cut_off, :]
+                ut, st, vt = u[:, :self._chi], s[:self._chi], v[:self._chi, :]
                 ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
 
                 sst = torch.sqrt(st)
@@ -351,6 +349,52 @@ class SquareTPS(object):
                 self._site_tensors[cy] = updated_ts[1] / torch.linalg.norm(updated_ts[1])
 
         return 1
+
+    def betaX_twobody_measure_ops(self, ops: tuple):
+        r'''
+        measure bond energy on beta lattice
+
+        Parameters
+        ----------
+        ops: tuple[tensor], twobody operator
+        '''
+
+        mts = {}
+        for c in self._coords:
+            mts.update({c: self.merged_tensor(c)})
+
+        # measure on all bonds
+        res = []
+        for c in self._coords:
+
+            # forward sites along two directions
+            cx = (c[0]+1) % self._nx, c[1]
+
+            # X-direction
+            mts_conj = {}
+
+            envs = self.site_envs(c)
+            # replace the connected bond by an identity
+            envs[2] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[c], envs).conj()
+            mts_conj.update({c: temp})
+
+            envs = self.site_envs(cx)
+            envs[0] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[cx], envs).conj()
+            mts_conj.update({cx: temp})
+
+            nums = [
+                    torch.einsum('abCdE,Ee,abcde->Cc', mts_conj[c], ops[0], mts[c]),
+                    torch.einsum('AbcdE,Ee,abcde->Aa', mts_conj[cx], ops[1], mts[cx])]
+            dens = [
+                    torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c]),
+                    torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
+
+            res.append(torch.einsum('ab,ab', *nums) / torch.einsum('ab,ab', *dens))
+
+        print(res)
+        return torch.mean(torch.as_tensor(res))
 
     def beta_twobody_measure_ops(self, ops: tuple):
         r'''
@@ -423,7 +467,67 @@ class SquareTPS(object):
 
         return torch.mean(torch.as_tensor(res))
 
-    def beta_twobody_measure(self, op):
+
+    def betaX_twobody_measure(self, op: torch.tensor) -> torch.tensor:
+        r'''
+        measure bond energy on beta lattice
+
+        Parameters
+        ----------
+        op: tensor, twobody operator
+        '''
+
+        # SVD to MPO
+        u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
+        ss = torch.sqrt(s).diag()
+        us = torch.einsum('Aa,abc->Abc', ss, u)
+        sv = torch.einsum('Aa,abc->Abc', ss, v)
+
+        mpo = us, sv
+
+        mts = {}
+        for c in self._coords:
+            mts.update({c: self.merged_tensor(c)})
+
+        # measure on all bonds
+        res = []
+        for c in self._coords:
+
+            # forward sites along two directions
+            cx = (c[0]+1) % self._nx, c[1]
+
+            # X-direction
+            mts_conj = {}
+
+            envs = self.site_envs(c)
+            # replace the connected bond by an identity
+            envs[2] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[c], envs).conj()
+            # absorb the operator
+            mts_conj.update({c: temp})
+
+            envs = self.site_envs(cx)
+            envs[0] = torch.eye(self._chi)
+            temp = self.absorb_envs(mts[cx], envs).conj()
+            mts_conj.update({cx: temp})
+
+            # sandwich
+            # numerator
+            nums = [
+                    torch.einsum('abCdE,fEe,abcde->Cfc', mts_conj[c], mpo[0], mts[c]),
+                    torch.einsum('AbcdE,fEe,abcde->Afa', mts_conj[cx], mpo[1], mts[cx])]
+            # denominator
+            dens = [
+                    torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c]),
+                    torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
+
+            # print(torch.einsum('abc,abc', *nums), torch.einsum('ab,ab', *dens))
+            res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
+
+        return torch.mean(torch.as_tensor(res))
+
+
+    def beta_twobody_measure(self, op: torch.tensor):
         r'''
         measure bond energy on beta lattice
 

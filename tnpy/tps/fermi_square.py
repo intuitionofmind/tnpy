@@ -166,16 +166,20 @@ class FermiSquareTPS(object):
 
     @property
     def size(self):
+
         return self._size
 
     @property
     def coords(self):
+
         return self._coords
 
     def tensors(self):
+
         return self._site_tensors, self._link_tensors
 
     def site_tensors(self) -> list:
+
         return list(self._site_tensors.values())
 
     def link_tensors(self) -> list:

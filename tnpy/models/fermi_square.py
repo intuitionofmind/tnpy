@@ -1019,5 +1019,3 @@ class SquareTJ1J2(object):
             time_evo = time_evo+(1.0/math.factorial(i))*((-delta)**i)*op_powers[i]
 
         return time_evo
-
-

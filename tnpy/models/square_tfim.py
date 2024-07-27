@@ -8,7 +8,7 @@ torch.set_default_dtype(torch.float64)
 
 import tnpy as tp
 
-class SquareXYZ(object):
+class SquareTFIM(object):
     r'''
     class of XYZ spin model on a square lattice
     '''
