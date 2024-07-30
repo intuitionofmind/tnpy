@@ -130,6 +130,11 @@ class SquareTPS(object):
 
         return self._ny
 
+    @property
+    def bond_dim(self):
+
+        return self._chi
+
     def site_tensors(self):
 
         return deepcopy(self._site_tensors)
@@ -620,7 +625,7 @@ class SquareTPS(object):
 
         return torch.mean(torch.as_tensor(res))
 
-    def ctmrg(self, rho: int, num_rg=10, init=None, if_print=False):
+    def ctmrg(self, tps_tensors: list, rho: int, init_ctms=None, num_rg=10, if_print=False):
         r'''
         corner transfer matrix renormalization group
         to find boundary fixed points (MPS) of this infinite TN
@@ -643,7 +648,7 @@ class SquareTPS(object):
         C0            C1
         '''
 
-        if init is None:
+        if init_ctms is None:
             # random initialization CTMRG tensors
             # corners
             cs = [torch.rand(rho, rho) for i in range(4)]
@@ -654,12 +659,21 @@ class SquareTPS(object):
             left_es = [torch.rand(rho, rho, self._chi, self._chi) for j in range(self._ny)]
             right_es = deepcopy(left_es)
 
+        else:
+            cs, up_es, down_es, left_es, right_es = init_ctms
+
         # merged tensors as MPO
+        # mts, mts_conj = {}, {}
+        # for c in self._coords:
+            # temp = self.merged_tensor(c)
+            # mts.update({c: temp})
+            # mts_conj.update({c: temp.conj()})
+
         mts, mts_conj = {}, {}
-        for c in self._coords:
-            temp = self.merged_tensor(c)
-            mts.update({c: temp})
-            mts_conj.update({c: temp.conj()})
+        for i, c in enumerate(self._coords):
+            # temp = self.merged_tensor(c)
+            mts.update({c: tps_tensors[i]})
+            mts_conj.update({c: tps_tensors[i].conj()})
 
         # used to record singular values
         su, sd, sl, sr = [], [], [], []
@@ -667,7 +681,8 @@ class SquareTPS(object):
         # one RG step: merge a whole unit cell into four boundaries, respectively
         for rg in range(num_rg):
             # up MPS
-            mps = deepcopy(up_es)
+            # mps = deepcopy(up_es)
+            mps = [t.clone() for t in up_es]
             mps.insert(0, cs[2])
             mps.append(cs[3])
 
@@ -781,7 +796,8 @@ class SquareTPS(object):
                 print('{:0.5E}'.format(diff.item()))
 
             # down MPS
-            mps = deepcopy(down_es)
+            # mps = deepcopy(down_es)
+            mps = [t.clone() for t in down_es]
             mps.insert(0, cs[0])
             mps.append(cs[1])
 
@@ -888,7 +904,8 @@ class SquareTPS(object):
                 print('{:0.5E}'.format(diff.item()))
 
             # left MPS
-            mps = deepcopy(left_es)
+            # mps = deepcopy(left_es)
+            mps = [t.clone() for t in left_es]
             mps.insert(0, cs[0])
             mps.append(cs[2])
 
@@ -998,7 +1015,8 @@ class SquareTPS(object):
                 print('{:0.5E}'.format(diff.item()))
 
             # right MPS
-            mps = deepcopy(right_es)
+            # mps = deepcopy(right_es)
+            mps = [t.clone() for t in right_es]
             mps.insert(0, cs[1])
             mps.append(cs[3])
 
@@ -1091,7 +1109,7 @@ class SquareTPS(object):
 
         return cs, up_es, down_es, left_es, right_es
 
-    def ctm_twobody_measure(self, op, ctm_tensors: tuple):
+    def ctm_twobody_measure(self, tps_tensors: list, op: torch.tensor, ctm_tensors: tuple):
         r'''
         measure a twobody operator by CTMRG 
 
@@ -1113,17 +1131,18 @@ class SquareTPS(object):
         mpo = us, sv
 
         mts, mts_conj = {}, {}
-        for c in self._coords:
-            temp = self.merged_tensor(c)
-            mts.update({c: temp})
-            mts_conj.update({c: temp.conj()})
+        for i, c in enumerate(self._coords):
+            # temp = self.merged_tensor(c)
+            mts.update({c: tps_tensors[i]})
+            mts_conj.update({c: tps_tensors[i].conj()})
 
         # pure tensors as denominator
         # need furher RG steps to contract rows
 
         rho = cs[0].shape[0]
 
-        mps_u = list(deepcopy(up_es))
+        '''
+        mps_u = [t.clone() for t in up_es]
         mps_u.insert(0, cs[2])
         mps_u.append(cs[3])
 
@@ -1212,7 +1231,7 @@ class SquareTPS(object):
         # |     | |     |
         # *--  --*--  --*
 
-        mps_d = list(deepcopy(down_es))
+        mps_d = [t.clone() for t in down_es]
         mps_d.insert(0, cs[0])
         mps_d.append(cs[1])
 
@@ -1227,15 +1246,18 @@ class SquareTPS(object):
         temp = torch.einsum('ab,ac->bc', temp, mps_u[-1])
         den = torch.einsum('bc,bc', temp, mps_d[-1])
 
-        print('CTMRG norm:', den.item())
+        # print('CTMRG norm:', den.item())
+        '''
 
         pair = (0, 0), (1, 0)
 
-        mps_u = list(deepcopy(up_es))
+        mps_u = [t.clone().detach() for t in up_es]
+        # mps_u = up_es
         mps_u.insert(0, cs[2])
         mps_u.append(cs[3])
 
-        mps_d = list(deepcopy(down_es))
+        mps_d = [t.clone().detach() for t in down_es]
+        # mps_d = down_es
         mps_d.insert(0, cs[0])
         mps_d.append(cs[1])
 
@@ -1250,8 +1272,9 @@ class SquareTPS(object):
 
         # denominator
         temp_den = torch.einsum('ab,bcde,fc->afde', mps_d[0], left_es[0], mps_u[0])
-        temp_num = temp_den.clone()
-        
+        # temp_num = temp_den.clone().detach()
+        temp_num = torch.einsum('ab,bcde,fc->afde', mps_d[0], left_es[0], mps_u[0])
+       
         temp_den = torch.einsum('egAa,efDd,AaBbCcDd,ghBb->fhCc', temp_den, mps_d[1], pure_dts[0], mps_u[1])
         temp_den = torch.einsum('egAa,efDd,AaBbCcDd,ghBb->fhCc', temp_den, mps_d[2], pure_dts[1], mps_u[2])
 
@@ -1262,6 +1285,7 @@ class SquareTPS(object):
         temp_num = torch.einsum('egAia,efDd,AiaBbCcDd,ghBb->fhCc', temp_num, mps_d[2], impure_dts[1], mps_u[2])
 
         num = torch.einsum('fhCc,fi,ijCc,hj', temp_num, mps_d[3], right_es[0], mps_u[3])
-        print(num.item(), den.item(), num / den)
 
-        return 1
+        # print(num.item(), den.item(), num / den)
+
+        return num / den
