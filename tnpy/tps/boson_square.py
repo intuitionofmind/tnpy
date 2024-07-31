@@ -110,6 +110,39 @@ class SquareTPS(object):
 
         return cls(site_tensors, link_tensors)
 
+    @classmethod
+    def randn(cls, nx: int, ny: int, chi: int, cflag=False):
+        r'''
+        generate a random SquareTPS
+
+        Parameters
+        ----------
+        nx: int, number of sites along x-direction in a unit cell
+        ny: int, number of sites along y-direction in a unit cell
+        chi: int, bond dimension of the site tensor
+        '''
+
+        site_shape = (chi, chi, chi, chi, 2)
+        site_tensors, link_tensors = {}, {}
+
+        for x, y in itertools.product(range(nx), range(ny)):
+            temp = torch.randn(site_shape)
+            lam_x = torch.randn(chi).diag()
+            lam_y = torch.randn(chi).diag()
+
+            if cflag:
+                temp = temp.cdouble()
+                lam_x = lam_x.cdouble()
+                lam_y = lam_y.cdouble()
+
+            # normalization
+            site_tensors[(x, y)] = temp / torch.linalg.norm(temp)
+            link_tensors[(x, y)] = [lam_x / torch.linalg.norm(lam_x), lam_y / torch.linalg.norm(lam_y)]
+
+        return cls(site_tensors, link_tensors)
+
+
+
     @property
     def coords(self):
 
@@ -244,7 +277,8 @@ class SquareTPS(object):
             q, l = tp.linalg.tqr(te_mts[1], group_dims=((2, 3, 4, 5), (0, 1)), qr_dims=(0, 2))
 
             temp = torch.einsum('abc,bcd->ad', r, l)
-            u, s, v = tp.linalg.svd(temp, full_matrices=False)
+            # u, s, v = torch.linalg.svd(temp, full_matrices=False)
+            u, s, v = tp.linalg.svd(temp)
 
             # truncate
             ut, st, vt = u[:, :self._chi], s[:self._chi], v[:self._chi, :]
@@ -311,7 +345,8 @@ class SquareTPS(object):
                 q, l = tp.linalg.tqr(te_mts[1], group_dims=((0, 1, 2, 5), (3, 4)), qr_dims=(3, 2))
 
                 temp = torch.einsum('abc,bcd->ad', r, l)
-                u, s, v = tp.linalg.svd(temp, full_matrices=False)
+                # u, s, v = torch.linalg.svd(temp, full_matrices=False)
+                u, s, v = tp.linalg.svd(temp)
 
                 # truncate
                 ut, st, vt = u[:, :self._chi], s[:self._chi], v[:self._chi, :]
@@ -625,14 +660,15 @@ class SquareTPS(object):
 
         return torch.mean(torch.as_tensor(res))
 
-    def ctmrg(self, tps_tensors: list, rho: int, init_ctms=None, num_rg=10, if_print=False):
+    def ctmrg(self, tps_tensor: torch.tensor, init_ctms=None, num_rg=1, if_print=False):
         r'''
         corner transfer matrix renormalization group
         to find boundary fixed points (MPS) of this infinite TN
 
         Parameters
         ----------
-        rho: int, bond dimension of boundary MPS
+        tps_tensor: tensor, stacked tensors of the unit cell
+        init_ctms: list[tensor], inital CTM tensors: [corners, up, down, left, right]
         num_rg: int, number of RG times
 
         C2     E      C3
@@ -648,6 +684,7 @@ class SquareTPS(object):
         C0            C1
         '''
 
+        '''
         if init_ctms is None:
             # random initialization CTMRG tensors
             # corners
@@ -660,7 +697,11 @@ class SquareTPS(object):
             right_es = deepcopy(left_es)
 
         else:
-            cs, up_es, down_es, left_es, right_es = init_ctms
+        '''
+        
+        cs, up_es, down_es, left_es, right_es = init_ctms
+
+        rho = cs[0].shape[0]
 
         # merged tensors as MPO
         # mts, mts_conj = {}, {}
@@ -672,8 +713,9 @@ class SquareTPS(object):
         mts, mts_conj = {}, {}
         for i, c in enumerate(self._coords):
             # temp = self.merged_tensor(c)
-            mts.update({c: tps_tensors[i]})
-            mts_conj.update({c: tps_tensors[i].conj()})
+            mts.update({c: tps_tensor[i].clone()})
+            # mts_conj.update({c: tps_tensor[i].conj()})
+            mts_conj.update({c: mts[c].conj()})
 
         # used to record singular values
         su, sd, sl, sr = [], [], [], []
@@ -749,7 +791,8 @@ class SquareTPS(object):
 
                 sts = [] # record all singular values in the MPS
                 for i in range(self._nx+1):
-                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]), full_matrices=False)
+                    # u, s, v = torch.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]), full_matrices=False)
+                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]))
                     # truncate
                     ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
                     ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
@@ -857,7 +900,8 @@ class SquareTPS(object):
 
                 sts = []
                 for i in range(self._nx+1):
-                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]), full_matrices=False)
+                    # u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]), full_matrices=False)
+                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]))
                     # truncate
                     ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
                     ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
@@ -968,7 +1012,8 @@ class SquareTPS(object):
                 prs, pls = [], []
                 sts = []
                 for j in range(self._ny+1):
-                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[j], ls[j]), full_matrices=False)
+                    # u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[j], ls[j]), full_matrices=False)
+                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[j], ls[j]))
                     # truncate
                     ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
                     ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
@@ -1061,7 +1106,8 @@ class SquareTPS(object):
                 prs, pls = [], []
                 sts = []
                 for j in range(self._ny+1):
-                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[j], ls[j]), full_matrices=False)
+                    # u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[j], ls[j]), full_matrices=False)
+                    u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[j], ls[j]))
                     # truncate
                     ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
                     ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
@@ -1109,7 +1155,7 @@ class SquareTPS(object):
 
         return cs, up_es, down_es, left_es, right_es
 
-    def ctm_twobody_measure(self, tps_tensors: list, op: torch.tensor, ctm_tensors: tuple):
+    def ctm_twobody_measure(self, tps_tensor: torch.tensor, ctm_tensors: list, op: torch.tensor):
         r'''
         measure a twobody operator by CTMRG 
 
@@ -1133,8 +1179,8 @@ class SquareTPS(object):
         mts, mts_conj = {}, {}
         for i, c in enumerate(self._coords):
             # temp = self.merged_tensor(c)
-            mts.update({c: tps_tensors[i]})
-            mts_conj.update({c: tps_tensors[i].conj()})
+            mts.update({c: tps_tensor[i].clone()})
+            mts_conj.update({c: tps_tensor[i].conj().clone()})
 
         # pure tensors as denominator
         # need furher RG steps to contract rows
@@ -1251,12 +1297,12 @@ class SquareTPS(object):
 
         pair = (0, 0), (1, 0)
 
-        mps_u = [t.clone().detach() for t in up_es]
+        mps_u = [t.clone() for t in up_es]
         # mps_u = up_es
         mps_u.insert(0, cs[2])
         mps_u.append(cs[3])
 
-        mps_d = [t.clone().detach() for t in down_es]
+        mps_d = [t.clone() for t in down_es]
         # mps_d = down_es
         mps_d.insert(0, cs[0])
         mps_d.append(cs[1])
