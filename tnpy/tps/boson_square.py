@@ -508,7 +508,7 @@ class SquareTPS(object):
         return torch.mean(torch.as_tensor(res))
 
 
-    def betaX_twobody_measure(self, op: torch.tensor) -> torch.tensor:
+    def beta_twobody_measure(self, op: torch.tensor) -> torch.tensor:
         r'''
         measure bond energy on beta lattice
 
@@ -532,78 +532,16 @@ class SquareTPS(object):
         # measure on all bonds
         res = []
         for c in self._coords:
-
-            # forward sites along two directions
+            # X-direction
             cx = (c[0]+1) % self._nx, c[1]
 
-            # X-direction
             mts_conj = {}
 
+            # bond Lambda matrices mimic the infinite TPS environments 
             envs = self.site_envs(c)
             # replace the connected bond by an identity
             envs[2] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[c], envs).conj()
-            # absorb the operator
-            mts_conj.update({c: temp})
-
-            envs = self.site_envs(cx)
-            envs[0] = torch.eye(self._chi)
-            temp = self.absorb_envs(mts[cx], envs).conj()
-            mts_conj.update({cx: temp})
-
-            # sandwich
-            # numerator
-            nums = [
-                    torch.einsum('abCdE,fEe,abcde->Cfc', mts_conj[c], mpo[0], mts[c]),
-                    torch.einsum('AbcdE,fEe,abcde->Afa', mts_conj[cx], mpo[1], mts[cx])]
-            # denominator
-            dens = [
-                    torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c]),
-                    torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
-
-            # print(torch.einsum('abc,abc', *nums), torch.einsum('ab,ab', *dens))
-            res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
-
-        return torch.mean(torch.as_tensor(res))
-
-
-    def beta_twobody_measure(self, op: torch.tensor):
-        r'''
-        measure bond energy on beta lattice
-
-        Parameters
-        ----------
-        op: tensor, twobody operator
-        '''
-
-        # SVD to MPO
-        u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
-        ss = torch.sqrt(s).diag()
-        us = torch.einsum('Aa,abc->Abc', ss, u)
-        sv = torch.einsum('Aa,abc->Abc', ss, v)
-
-        mpo = us, sv
-
-        mts = {}
-        for c in self._coords:
-            mts.update({c: self.merged_tensor(c)})
-
-        # measure on all bonds
-        res = []
-        for c in self._coords:
-
-            # forward sites along two directions
-            cx = (c[0]+1) % self._nx, c[1]
-            cy = c[0], (c[1]+1) % self._ny
-
-            # X-direction
-            mts_conj = {}
-
-            envs = self.site_envs(c)
-            # replace the connected bond by an identity
-            envs[2] = torch.eye(self._chi)
-            temp = self.absorb_envs(mts[c], envs).conj()
-            # absorb the operator
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cx)
@@ -622,26 +560,16 @@ class SquareTPS(object):
                     torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
 
             res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
-            # print('MPO:', torch.einsum('abc,abc', *nums), torch.einsum('ab,ab', *dens), res[-1])
-
-            '''
-            # wave-function test
-            wf = torch.einsum('abcde,cfghi->abdefghi', mts[c], mts[cx])
-            wf_conj = torch.einsum('abcde,cfghi->abdefghi', mts_conj[c], mts_conj[cx])
-
-            num = torch.einsum('abcDefgH,DHdh,abcdefgh', wf_conj, op, wf)
-            den = torch.einsum('abcdefgh,abcdefgh', wf_conj, wf)
-            print('WF test:', num, den, num / den)
-            '''
 
             # Y-direction
+            cy = c[0], (c[1]+1) % self._ny
+
             mts_conj = {}
 
             envs = self.site_envs(c)
             # replace the connected bond by an identity
             envs[1] = torch.eye(self._chi)
             temp = self.absorb_envs(mts[c], envs).conj()
-            # absorb the operator
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cy)
@@ -649,16 +577,22 @@ class SquareTPS(object):
             temp = self.absorb_envs(mts[cy], envs).conj()
             mts_conj.update({cy: temp})
 
+            # sandwich
+            # numerator
             nums = [
                     torch.einsum('aBcdE,fEe,abcde->Bfb', mts_conj[c], mpo[0], mts[c]),
                     torch.einsum('abcDE,fEe,abcde->Dfd', mts_conj[cy], mpo[1], mts[cy])]
+            # denominator
             dens = [
                     torch.einsum('aBcde,abcde->Bb', mts_conj[c], mts[c]),
                     torch.einsum('abcDe,abcde->Dd', mts_conj[cy], mts[cy])]
- 
+
             res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
 
+        print(torch.tensor(res))
+
         return torch.mean(torch.as_tensor(res))
+
 
     def ctmrg_move_up(self, mps: list, mpo: list):
         r'''
@@ -682,7 +616,7 @@ class SquareTPS(object):
             mps[i+1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', mps[i+1], mpo[i+1])
 
         # original wavefunction
-        wf = torch.einsum('abcd,abcefghi,efgjklmn,jklo->dhimno', *mps)
+        # wf = torch.einsum('abcd,abcefghi,efgjklmn,jklo->dhimno', *mps)
 
         rs, ls = [], []
         # QR from left to right
@@ -738,9 +672,9 @@ class SquareTPS(object):
             mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mps[i+1], prs[i+1])
 
         # test compression
-        new_wf = torch.einsum('ab,acde,cfgh,fi->bdeghi', *mps)
-        diff = torch.linalg.norm(new_wf-wf)
-        print('CTMRG up move:', torch.linalg.norm(wf).item(), diff.item())
+        # new_wf = torch.einsum('ab,acde,cfgh,fi->bdeghi', *mps)
+        # diff = torch.linalg.norm(new_wf-wf)
+        # print('CTMRG up move:', torch.linalg.norm(wf).item(), diff.item())
 
         return mps
 
@@ -759,7 +693,7 @@ class SquareTPS(object):
             mps[i+1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', mps[i+1], mpo[i+1])
 
         # original WF
-        wf = torch.einsum('abcd,abcefghi,efgjklmn,jklo->dhimno', *mps)
+        # wf = torch.einsum('abcd,abcefghi,efgjklmn,jklo->dhimno', *mps)
 
         rs, ls = [], []
         # QR from left to right
@@ -811,9 +745,9 @@ class SquareTPS(object):
             mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mps[i+1], prs[i+1])
 
         # test compression
-        new_wf = torch.einsum('ab,acde,cfgh,fi->bdeghi', *mps)
-        diff = torch.linalg.norm(new_wf-wf)
-        print('CTMRG move down:', torch.linalg.norm(wf).item(), diff.item())
+        # new_wf = torch.einsum('ab,acde,cfgh,fi->bdeghi', *mps)
+        # diff = torch.linalg.norm(new_wf-wf)
+        # print('CTMRG move down:', torch.linalg.norm(wf).item(), diff.item())
 
         return mps
 
@@ -836,7 +770,7 @@ class SquareTPS(object):
         for j in range(self._ny):
             mps[j+1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', mps[j+1], mpo[j+1])
         
-        wf = torch.einsum('abcd,bcdefghi,efgjklmn,ojkl->ahimno', *mps)
+        # wf = torch.einsum('abcd,bcdefghi,efgjklmn,ojkl->ahimno', *mps)
 
         # QR and LQ factorizations
         # residual tensors:
@@ -852,7 +786,6 @@ class SquareTPS(object):
         #   *
         # | | |
         # 0 1 2 
-
         rs, ls = [], []
         # QR from botton to top
         temp = mps[0]
@@ -902,9 +835,9 @@ class SquareTPS(object):
         for j in range(self._ny):
             mps[j+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j], mps[j+1], prs[j+1])
 
-        new_wf = torch.einsum('ab,bcde,cfgh,if->adeghi', *mps)
-        diff = torch.linalg.norm(new_wf-wf)
-        print('CTMRG left move:', torch.linalg.norm(wf).item(), diff.item())
+        # new_wf = torch.einsum('ab,bcde,cfgh,if->adeghi', *mps)
+        # diff = torch.linalg.norm(new_wf-wf)
+        # print('CTMRG left move:', torch.linalg.norm(wf).item(), diff.item())
 
         return mps
 
@@ -920,9 +853,9 @@ class SquareTPS(object):
         mps[-1] = torch.einsum('abcd,be->aecd', mpo[-1], mps[-1])
         
         for j in range(self._ny):
-            mps[j+1] = torch.einsum('fgCc,AaBbCcDd->fDdgBbAa', mps[j+1], mpo[j+1])
+            mps[j+1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[j+1], mps[j+1])
 
-        wf = torch.einsum('abcd,bcdefghi,efgjklmn,ojkl->ahimno', *mps)
+        # wf = torch.einsum('abcd,bcdefghi,efgjklmn,ojkl->ahimno', *mps)
 
         rs, ls = [], []
         # QR from botton to top
@@ -973,9 +906,9 @@ class SquareTPS(object):
         for j in range(self._ny):
             mps[j+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j], mps[j+1], prs[j+1])
 
-        new_wf = torch.einsum('ab,bcde,cfgh,if->adeghi', *mps)
-        diff = torch.linalg.norm(new_wf-wf)
-        print('CTMRG right move:', torch.linalg.norm(wf).item(), diff.item())
+        # new_wf = torch.einsum('ab,bcde,cfgh,if->adeghi', *mps)
+        # diff = torch.linalg.norm(new_wf-wf)
+        # print('CTMRG right move:', torch.linalg.norm(wf).item(), diff.item())
 
         return mps
 
@@ -1191,7 +1124,6 @@ class SquareTPS(object):
         return torch.tensor(meas)
 
 
-
     def ctm_twobody_measure(self, tps: torch.tensor, ctms: list, op: torch.tensor) -> list:
         r'''
         measure a twobody operator by CTMRG 
@@ -1312,8 +1244,8 @@ class SquareTPS(object):
                 mps_l.append(cs[2])
 
                 mps_r = [t.clone() for t in right_es]
-                mps_r.insert(0, cs[3])
-                mps_r.append(cs[1])
+                mps_r.insert(0, cs[1])
+                mps_r.append(cs[3])
 
                 # renormalize left MPS until column-i
                 # k = 0, ..., i-1
@@ -1339,23 +1271,38 @@ class SquareTPS(object):
 
                     mps_r = self.ctmrg_move_right(mps_r, mpo)
 
+                # MPO for column-i
+                # as pure double tensors
+                mpo = []
+                for j in range(self._ny):
+                    mpo.append(dts[(i, j)])
+
+                mpo.insert(0, down_es[i])
+                mpo.append(up_es[i])
+
+                '''
+                # another way to test norm
+                bou_l = torch.einsum('ab,bcde,cfgh,if->adeghi', *mps_l)
+                temp = torch.einsum('hiCc,AaBbCcDd,EeFfGgBb,jkFf->hAaEejiDdGgk', *mpo)
+                bou_r = torch.einsum('ab,bcde,cfgh,if->adeghi', *mps_r)
+                nor_y = torch.einsum('abcdef,abcdefABCDEF,ABCDEF', bou_l, temp, bou_r)
+                print(nor_y.item())
+                '''
+
                 # build down and up environments
                 # 0 1 2 3
                 # b d e f
                 # | | | |
                 # *******
-                down_env = torch.einsum('ab,acde,cf->bdef', mps_l[0], down_es[i], mps_r[0])
-                up_env = torch.einsum('ab,acde,cf->bdef', mps_l[-1], up_es[i], mps_r[-1])
-
-                # pure double tensors
-                pure_dts = []
-                for j in range(self._ny):
-                    pure_dts.append(dts[(i, j)])
+                down_env = torch.einsum('ab,acde,cf->bdef', mps_l[0], mpo[0], mps_r[0])
+                up_env = torch.einsum('ab,acde,cf->bdef', mps_l[-1], mpo[-1], mps_r[-1])
 
                 # denominator
                 temp = down_env.clone()
                 for j in range(self._ny):
-                    temp = torch.einsum('eDdg,efAa,AaBbCcDd,ghCc->fBbh', temp, mps_l[j+1], pure_dts[j], mps_r[j+1])
+                    temp = torch.einsum(
+                            'eDdg,efAa,AaBbCcDd,ghCc->fBbh',
+                            temp, mps_l[j+1], mpo[j+1], mps_r[j+1])
 
                 den = torch.einsum('abcd,abcd', temp, up_env)
                 print('Y RG norm', den.item())
@@ -1375,7 +1322,7 @@ class SquareTPS(object):
                         elif (j+1) == l:
                             temp = torch.einsum('eDidg,efAa,AaBbCcDid,ghCc->fBbh', temp, mps_l[j+1], impure_dts[1], mps_r[j+1])
                         else:
-                            temp = torch.einsum('eDdg,efAa,AaBbCcDd,ghCc->fBbh', temp, mps_l[j+1], pure_dts[j], mps_r[j+1])
+                            temp = torch.einsum('eDdg,efAa,AaBbCcDd,ghCc->fBbh', temp, mps_l[j+1], mpo[j+1], mps_r[j+1])
 
                     num = torch.einsum('abcd,abcd', temp, up_env)
                     # print('Y', num, den, (num / den).item())
