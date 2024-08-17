@@ -390,51 +390,6 @@ class SquareTPS(object):
 
         return 1
 
-    def betaX_twobody_measure_ops(self, ops: tuple):
-        r'''
-        measure bond energy on beta lattice
-
-        Parameters
-        ----------
-        ops: tuple[tensor], twobody operator
-        '''
-
-        mts = {}
-        for c in self._coords:
-            mts.update({c: self.merged_tensor(c)})
-
-        # measure on all bonds
-        res = []
-        for c in self._coords:
-
-            # forward sites along two directions
-            cx = (c[0]+1) % self._nx, c[1]
-
-            # X-direction
-            mts_conj = {}
-
-            envs = self.site_envs(c)
-            # replace the connected bond by an identity
-            envs[2] = torch.eye(self._chi)
-            temp = self.absorb_envs(mts[c], envs).conj()
-            mts_conj.update({c: temp})
-
-            envs = self.site_envs(cx)
-            envs[0] = torch.eye(self._chi)
-            temp = self.absorb_envs(mts[cx], envs).conj()
-            mts_conj.update({cx: temp})
-
-            nums = [
-                    torch.einsum('abCdE,Ee,abcde->Cc', mts_conj[c], ops[0], mts[c]),
-                    torch.einsum('AbcdE,Ee,abcde->Aa', mts_conj[cx], ops[1], mts[cx])]
-            dens = [
-                    torch.einsum('abCde,abcde->Cc', mts_conj[c], mts[c]),
-                    torch.einsum('Abcde,abcde->Aa', mts_conj[cx], mts[cx])]
-
-            res.append(torch.einsum('ab,ab', *nums) / torch.einsum('ab,ab', *dens))
-
-        print(res)
-        return torch.mean(torch.as_tensor(res))
 
     def beta_twobody_measure_ops(self, ops: tuple):
         r'''
@@ -1172,47 +1127,49 @@ class SquareTPS(object):
                 # l = ..., j+1
                 for l in range(self._ny-1, j, -1):
                     # temporary MPO
-                    mpo = []
+                    temp_mpo = []
                     for i in range(self._nx):
-                        mpo.append(dts[(i, l)])
+                        temp_mpo.append(dts[(i, l)])
 
-                    mpo.insert(0, left_es[l])
-                    mpo.append(right_es[l])
+                    temp_mpo.insert(0, left_es[l])
+                    temp_mpo.append(right_es[l])
 
-                    mps_u = self.ctmrg_move_up(mps_u, mpo)
+                    mps_u = self.ctmrg_move_up(mps_u, temp_mpo)
 
                 # renormalize down MPS until row-j
                 # l = 0, ..., j-1
                 for l in range(j):
-                    mpo = []
+                    temp_mpo = []
                     for i in range(self._nx):
-                        mpo.append(dts[(i, l)])
+                        temp_mpo.append(dts[(i, l)])
 
-                    mpo.insert(0, left_es[l])
-                    mpo.append(right_es[l])
+                    temp_mpo.insert(0, left_es[l])
+                    temp_mpo.append(right_es[l])
 
-                    mps_d = self.ctmrg_move_down(mps_d, mpo)
+                    mps_d = self.ctmrg_move_down(mps_d, temp_mpo)
+
+                # MPO for very row-j
+                mpo = []
+                for i in range(self._nx):
+                    mpo.append(dts[(i, j)])
+
+                mpo.insert(0, left_es[j])
+                mpo.append(right_es[j])
 
                 # build left and right environment tensors
                 # *--f,3
                 # *--d,1
                 # *--e,2
                 # *--a,0
-                left_env = torch.einsum('ab,bcde,fc->adef', mps_d[0], left_es[j], mps_u[0])
-                right_env = torch.einsum('ab,bcde,fc->adef', mps_d[-1], right_es[j], mps_u[-1])
-
-                # pure double tensors
-                pure_dts = []
-                for i in range(self._nx):
-                    pure_dts.append(dts[(i, j)])
+                left_env = torch.einsum('ab,bcde,fc->adef', mps_d[0], mpo[0], mps_u[0])
+                right_env = torch.einsum('ab,bcde,fc->adef', mps_d[-1], mpo[-1], mps_u[-1])
 
                 # denominator
                 temp = left_env.clone()
                 for i in range(self._nx):
-                    temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[i+1], pure_dts[i], mps_u[i+1])
+                    temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[i+1], mpo[i+1], mps_u[i+1])
 
                 den = torch.einsum('abcd,abcd', temp, right_env)
-                print('X RG norm', den.item())
 
                 # impure double tensors
                 impure_dts = []
@@ -1229,10 +1186,9 @@ class SquareTPS(object):
                         elif (i+1) == k:
                             temp = torch.einsum('eAiag,efDd,AiaBbCcDd,ghBb->fCch', temp, mps_d[k+1], impure_dts[1], mps_u[k+1])
                         else:
-                            temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[k+1], pure_dts[k], mps_u[k+1])
+                            temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[k+1], mpo[k+1], mps_u[k+1])
 
                     num = torch.einsum('abcd,abcd', temp, right_env)
-                    # print('X', num, den, (num / den).item())
                     meas.append(num / den)
 
         # vertical bonds
@@ -1250,28 +1206,28 @@ class SquareTPS(object):
                 # renormalize left MPS until column-i
                 # k = 0, ..., i-1
                 for k in range(i):
-                    mpo = []
+                    temp_mpo = []
                     for j in range(self._ny):
-                        mpo.append(dts[(k, j)])
+                        temp_mpo.append(dts[(k, j)])
 
-                    mpo.insert(0, down_es[k])
-                    mpo.append(up_es[k])
+                    temp_mpo.insert(0, down_es[k])
+                    temp_mpo.append(up_es[k])
 
-                    mps_l = self.ctmrg_move_left(mps_l, mpo)
+                    mps_l = self.ctmrg_move_left(mps_l, temp_mpo)
 
                 # renormalize right MPS until column-i
                 # k = ..., i+1
                 for k in range(self._nx-1, i, -1):
-                    mpo = []
+                    temp_mpo = []
                     for j in range(self._ny):
-                        mpo.append(dts[(k, j)])
+                        temp_mpo.append(dts[(k, j)])
 
-                    mpo.insert(0, down_es[k])
-                    mpo.append(up_es[k])
+                    temp_mpo.insert(0, down_es[k])
+                    temp_mpo.append(up_es[k])
 
-                    mps_r = self.ctmrg_move_right(mps_r, mpo)
+                    mps_r = self.ctmrg_move_right(mps_r, temp_mpo)
 
-                # MPO for column-i
+                # MPO for very column-i
                 # as pure double tensors
                 mpo = []
                 for j in range(self._ny):
@@ -1305,7 +1261,6 @@ class SquareTPS(object):
                             temp, mps_l[j+1], mpo[j+1], mps_r[j+1])
 
                 den = torch.einsum('abcd,abcd', temp, up_env)
-                print('Y RG norm', den.item())
 
                 # impure double tensors
                 impure_dts = []
@@ -1318,14 +1273,13 @@ class SquareTPS(object):
                     temp = down_env.clone()
                     for l in range(self._ny):
                         if j == l:
-                            temp = torch.einsum('eDdg,efAa,AaBibCcDd,ghCc->fBibh', temp, mps_l[j+1], impure_dts[0], mps_r[j+1])
+                            temp = torch.einsum('eDdg,efAa,AaBibCcDd,ghCc->fBibh', temp, mps_l[l+1], impure_dts[0], mps_r[l+1])
                         elif (j+1) == l:
-                            temp = torch.einsum('eDidg,efAa,AaBbCcDid,ghCc->fBbh', temp, mps_l[j+1], impure_dts[1], mps_r[j+1])
+                            temp = torch.einsum('eDidg,efAa,AaBbCcDid,ghCc->fBbh', temp, mps_l[l+1], impure_dts[1], mps_r[l+1])
                         else:
-                            temp = torch.einsum('eDdg,efAa,AaBbCcDd,ghCc->fBbh', temp, mps_l[j+1], mpo[j+1], mps_r[j+1])
+                            temp = torch.einsum('eDdg,efAa,AaBbCcDd,ghCc->fBbh', temp, mps_l[l+1], mpo[l+1], mps_r[l+1])
 
                     num = torch.einsum('abcd,abcd', temp, up_env)
-                    # print('Y', num, den, (num / den).item())
                     meas.append(num / den)
 
         # return torch.tensor(meas)
