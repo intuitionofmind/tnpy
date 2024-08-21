@@ -141,8 +141,6 @@ class SquareTPS(object):
 
         return cls(site_tensors, link_tensors)
 
-
-
     @property
     def coords(self):
 
@@ -175,6 +173,7 @@ class SquareTPS(object):
     def link_tensors(self):
 
         return deepcopy(self._link_tensors)
+
 
     def site_envs(self, site: tuple, inner_bonds=()) -> list:
         r'''
@@ -235,6 +234,30 @@ class SquareTPS(object):
         envs = self.site_envs(site, inner_bonds=(0, 1, 2, 3))
 
         return self.absorb_envs(self._site_tensors[site], envs)
+
+    def unified_tensor(self) -> torch.tensor:
+        r'''
+        return the TPS tensor in a unit cell as a whole tensor
+        new dimension is created as dim=0
+        '''
+
+        tens = []
+        for c in self._coords:
+            tens.append(self.merged_tensor(c))
+
+        return torch.stack(tens, dim=0)
+
+    def double_tensors(self) -> dict:
+        r'''
+        return double tensors as a dict
+        '''
+
+        dts = []
+        for c in self._coords:
+            temp = self.merged_tensor(c)
+            dts.update({c: torch.einsum('ABCDe,abcde->AaBbCcDd', temp.conj(), temp)})
+
+        return dts
 
     def simple_update_proj(self, time_evo_mpo: tuple):
         r'''
@@ -628,6 +651,87 @@ class SquareTPS(object):
 
         return new_mps
 
+    def ctmrg_move_up(self, mps: list, mpo: list):
+        r'''
+        one up step of CTMRG
+
+        Parameters:
+        ----------
+        mps: list[tensor], the boundary MPS
+        mpo: list[tensor], the MPO
+        '''
+
+        assert len(mps) == self._nx+2, 'this boundary MPS is not valid for length'
+        assert len(mpo) == self._nx+2, 'this MPO is not valid for length'
+
+        rho = mps[0].shape[0]
+
+        # MPO-MPS operation
+        # need a new variable, otherwise will change the input arguments
+        mpo_mps = [None]*(self._nx+2)
+        mpo_mps[0] = torch.einsum('ab,cbde->adec', mps[0], mpo[0])
+        mpo_mps[-1] = torch.einsum('ab,cbde->adec', mps[-1], mpo[-1])
+        for i in range(1, self._nx+1):
+            mpo_mps[i] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', mps[i], mpo[i])
+
+        rs, ls = [], []
+        # QR from left to right
+        temp = mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        rs.append(r)
+        
+        for i in range(1, self._nx+1):
+            # merge R in the next tensor
+            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mpo_mps[i])
+            q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+            rs.append(r)
+
+        # LQ from right to left
+        temp = mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        ls.append(l)
+
+        for i in range(self._nx, 0, -1):
+            # merge L into the previous tensor
+            temp = torch.einsum('abcdefgh,defi->abcigh', mpo_mps[i], l)
+            q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+            ls.append(l)
+        
+        ls.reverse()
+
+        # build projectors on each inner bond
+        # there are (nx+1) inner bonds
+        # left-, right- means on each bond
+        prs, pls = [], []
+
+        for i in range(self._nx+1):
+            u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs[i], ls[i]))
+            # truncate
+            ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
+            ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+            # inverse of square root
+            sst_inv = (1.0 / torch.sqrt(st)).diag()
+
+            if self._cflag:
+                sst_inv = sst_inv.cdouble()
+
+            pr = torch.einsum('abcd,de->abce', ls[i], vt_dagger @ sst_inv)
+            pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs[i])
+            prs.append(pr)
+            pls.append(pl)
+
+        # apply projectors to compress the MPO-MPS
+        new_mps = [None]*(self._nx+2)
+        new_mps[0]= torch.einsum('abcd,abce->ed', mpo_mps[0], prs[0])
+        new_mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mpo_mps[-1])
+
+        for i in range(1, self._nx+1):
+            new_mps[i] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i-1], mpo_mps[i], prs[i])
+
+        return new_mps
+
+
+
 
     def ctmrg_move_down(self, mps: list, mpo: list):
 
@@ -636,30 +740,31 @@ class SquareTPS(object):
 
         rho = mps[0].shape[0]
 
-        # head and tail
-        mps[0] = torch.einsum('ab,bcde->adec', mps[0], mpo[0])
-        mps[-1] = torch.einsum('ab,bcde->adec', mps[-1], mpo[-1])
+        # MPO-MPS operation
+        mpo_mps = [None]*(self._nx+2)
+        mpo_mps[0] = torch.einsum('ab,bcde->adec', mps[0], mpo[0])
+        mpo_mps[-1] = torch.einsum('ab,bcde->adec', mps[-1], mpo[-1])
         for i in range(1, self._nx+1):
-            mps[i] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', mps[i], mpo[i])
+            mpo_mps[i] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', mps[i], mpo[i])
 
         rs, ls = [], []
         # QR from left to right
-        temp = mps[0]
+        temp = mpo_mps[0]
         q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
         rs.append(r)
         
         for i in range(1, self._nx+1):
-            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mps[i])
+            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mpo_mps[i])
             q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
             rs.append(r)
 
         # LQ from right to left
-        temp = mps[-1]
+        temp = mpo_mps[-1]
         q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
         ls.append(l)
 
         for i in range(self._nx, 0, -1):
-            temp = torch.einsum('abcdefgh,defi->abcigh', mps[i], l)
+            temp = torch.einsum('abcdefgh,defi->abcigh', mpo_mps[i], l)
             q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
             ls.append(l)
         
@@ -684,19 +789,15 @@ class SquareTPS(object):
             pls.append(pl)
 
         # apply projectors to compress the MPS
+        new_mps = [None]*(self._nx+2)
         # head and tail
-        mps[0]= torch.einsum('abcd,abce->ed', mps[0], prs[0])
-        mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mps[-1])
+        new_mps[0]= torch.einsum('abcd,abce->ed', mpo_mps[0], prs[0])
+        new_mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mpo_mps[-1])
 
         for i in range(self._nx):
-            mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mps[i+1], prs[i+1])
+            new_mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mpo_mps[i+1], prs[i+1])
 
-        # test compression
-        # new_wf = torch.einsum('ab,acde,cfgh,fi->bdeghi', *mps)
-        # diff = torch.linalg.norm(new_wf-wf)
-        # print('CTMRG move down:', torch.linalg.norm(wf).item(), diff.item())
-
-        return mps
+        return new_mps
 
 
     def ctmrg_move_left(self, mps: list, mpo: list):
@@ -795,30 +896,31 @@ class SquareTPS(object):
 
         rho = mps[0].shape[0]
 
-        mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
-        mps[-1] = torch.einsum('abcd,be->aecd', mpo[-1], mps[-1])
+        mpo_mps = [None]*(self._ny+2)
+        mpo_mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
+        mpo_mps[-1] = torch.einsum('abcd,be->aecd', mpo[-1], mps[-1])
         
         for j in range(1, self._ny+1):
-            mps[j] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[j], mps[j])
+            mpo_mps[j] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[j], mps[j])
 
         rs, ls = [], []
         # QR from botton to top
-        temp = mps[0]
+        temp = mpo_mps[0]
         q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 0))
         rs.append(r)
         
         for j in range(1, self._ny+1):
-            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mps[j])
+            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mpo_mps[j])
             q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
             rs.append(r)
 
         # LQ from top to botton
-        temp = mps[-1]
+        temp = mpo_mps[-1]
         q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
         ls.append(l)
 
         for j in range(self._ny, 0, -1):
-            temp = torch.einsum('abcdefgh,defi->abcigh', mps[j], l)
+            temp = torch.einsum('abcdefgh,defi->abcigh', mpo_mps[j], l)
             q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
             ls.append(l)
         
@@ -844,17 +946,18 @@ class SquareTPS(object):
             pls.append(pl)
 
         # apply projectors to compress the MPO-MPS
+        new_mps = [None]*(self._ny+2)
         # head and tail
-        mps[0]= torch.einsum('abcd,bcde->ae', mps[0], prs[0])
-        mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mps[-1])
+        new_mps[0]= torch.einsum('abcd,bcde->ae', mpo_mps[0], prs[0])
+        new_mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mpo_mps[-1])
 
         for j in range(1, self._ny+1):
-            mps[j] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j-1], mps[j], prs[j])
+            new_mps[j] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j-1], mpo_mps[j], prs[j])
 
-        return mps
+        return new_mps
 
 
-    def ctmrg(self, dts: dict, init_ctms: tuple, if_print=False):
+    def _ctmrg(self, dts: dict, init_ctms: tuple):
         r'''
         one step of CTMRG
         absorb the unit cell along four directions, respectively
@@ -866,13 +969,14 @@ class SquareTPS(object):
 
         cs, up_es, down_es, left_es, right_es = init_ctms
 
-        rho = cs[0].shape[0]
+        # temporary corner matrices
+        c0, c1, c2, c3 = [], [], [], []
 
         # up boundary: from left to right
         # build temporary up MPS
         mps = [t.clone() for t in up_es]
-        mps.insert(0, cs[2])
-        mps.append(cs[3])
+        mps.insert(0, cs[2].clone())
+        mps.append(cs[3].clone())
 
         # renormalization:
         # merge a whole unit cell into this MPS
@@ -884,22 +988,22 @@ class SquareTPS(object):
                 mpo.append(dts[(i, j)])
             # head and tail of MPO
             # from other edge tensors
-            mpo.insert(0, left_es[j])
-            mpo.append(right_es[j])
+            mpo.insert(0, left_es[j].clone())
+            mpo.append(right_es[j].clone())
 
             mps = self.ctmrg_move_up(mps, mpo)
 
-            # update CTM tensors
-            cs[2] = mps[0] / torch.linalg.norm(mps[0])
-            cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
+            c2.append(mps[0])
+            c3.append(mps[-1])
 
-            for i in range(self._nx):
-                up_es[i] = mps[i+1] / torch.linalg.norm(mps[i+1])
+        # update edge tensors
+        for i in range(self._nx):
+            up_es[i] = mps[i+1].clone() / torch.linalg.norm(mps[i+1])
 
         # down boundary: from left to right
         mps = [t.clone() for t in down_es]
-        mps.insert(0, cs[0])
-        mps.append(cs[1])
+        mps.insert(0, cs[0].clone())
+        mps.append(cs[1].clone())
 
         # j = 0, 1, 2, 3...
         for j in range(self._ny):
@@ -908,22 +1012,21 @@ class SquareTPS(object):
             for i in range(self._nx):
                 mpo.append(dts[(i, j)])
 
-            mpo.insert(0, left_es[j])
-            mpo.append(right_es[j])
+            mpo.insert(0, left_es[j].clone())
+            mpo.append(right_es[j].clone())
 
             mps = self.ctmrg_move_down(mps, mpo)
 
-            # update CTM tensors
-            cs[0] = mps[0] / torch.linalg.norm(mps[0])
-            cs[1] = mps[-1] / torch.linalg.norm(mps[-1])
+            c0.append(mps[0])
+            c1.append(mps[-1])
 
-            for i in range(self._nx):
-                down_es[i] = mps[i+1] / torch.linalg.norm(mps[i+1])
+        for i in range(self._nx):
+            down_es[i] = mps[i+1].clone() / torch.linalg.norm(mps[i+1])
 
         # left boundary: from down to up
         mps = [t.clone() for t in left_es]
-        mps.insert(0, cs[0])
-        mps.append(cs[2])
+        mps.insert(0, cs[0].clone())
+        mps.append(cs[2].clone())
         
         # i = 0, 1, 2, 3...
         for i in range(self._nx):
@@ -931,22 +1034,21 @@ class SquareTPS(object):
             for j in range(self._ny):
                 mpo.append(dts[(i, j)])
 
-            mpo.insert(0, down_es[i])
-            mpo.append(up_es[i])
+            mpo.insert(0, down_es[i].clone())
+            mpo.append(up_es[i].clone())
             
             mps = self.ctmrg_move_left(mps, mpo)
 
-            # update CTM tensors
-            cs[0] = mps[0] / torch.linalg.norm(mps[0])
-            cs[2] = mps[-1] / torch.linalg.norm(mps[-1])
+            c0.append(mps[0])
+            c2.append(mps[-1])
 
-            for j in range(self._ny):
-                left_es[j] = mps[j+1] / torch.linalg.norm(mps[j+1])
+        for j in range(self._ny):
+            left_es[j] = mps[j+1].clone() / torch.linalg.norm(mps[j+1])
 
         # right boundary: from down to up
         mps = [t.clone() for t in right_es]
-        mps.insert(0, cs[1])
-        mps.append(cs[3])
+        mps.insert(0, cs[1].clone())
+        mps.append(cs[3].clone())
 
         # i = ...3, 2, 1, 0
         for i in range(self._nx-1, -1, -1):
@@ -954,20 +1056,132 @@ class SquareTPS(object):
             for j in range(self._ny):
                 mpo.append(dts[(i, j)])
 
-            mpo.insert(0, down_es[i])
-            mpo.append(up_es[i])
+            mpo.insert(0, down_es[i].clone())
+            mpo.append(up_es[i].clone())
 
             mps = self.ctmrg_move_right(mps, mpo)
 
-            # update CTM tensors
-            cs[1] = mps[0] / torch.linalg.norm(mps[0])
-            cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
+            c1.append(mps[0])
+            c3.append(mps[-1])
 
-            for j in range(self._ny):
-                right_es[j] = mps[j+1] / torch.linalg.norm(mps[j+1])
+        for j in range(self._ny):
+            right_es[j] = mps[j+1].clone() / torch.linalg.norm(mps[j+1])
+
+        # update corners
+        temp_cs = c0, c1, c2, c3
+        for i in range(4):
+            # print(len(temp_cs[i]))
+            cs[i] = sum(temp_cs[i])
+            cs[i] = cs[i] / torch.linalg.norm(cs[i])
 
         return cs, up_es, down_es, left_es, right_es
 
+
+    def ctmrg_cw(self, dts: dict, init_ctms: tuple):
+        r'''
+        one step of CTMRG
+        absorb the unit cell along four directions, respectively
+
+        Parameters:
+        dts: dict[torch.tensor], {key: coordinate; value: double tensor
+        init_ctms: tuple[torch.tensor], initial CTM tensors
+        '''
+
+        cs, up_es, down_es, left_es, right_es = init_ctms
+
+        # up boundary: from left to right
+        # renormalization:
+        # merge a whole unit cell into this MPS
+        # j = ...3, 2, 1, 0
+        for j in range(self._ny-1, -1, -1):
+            # build temporary up MPS
+            mps_u = [t for t in up_es]
+            mps_u.insert(0, cs[2])
+            mps_u.append(cs[3])
+
+            # temporary MPO
+            mpo_u = []
+            for i in range(self._nx):
+                mpo_u.append(dts[(i, j)])
+            # head and tail of MPO
+            # from other edge tensors
+            mpo_u.insert(0, left_es[j])
+            mpo_u.append(right_es[j])
+
+            new_mps_u = self.ctmrg_move_up(mps_u, mpo_u)
+
+            # update CTM tensors
+            cs[2] = new_mps_u[0] / torch.linalg.norm(new_mps_u[0])
+            cs[3] = new_mps_u[-1] / torch.linalg.norm(new_mps_u[-1])
+            # update edge tensors
+            for i in range(self._nx):
+                up_es[i] = new_mps_u[i+1] / torch.linalg.norm(new_mps_u[i+1])
+
+        # right boundary: from down to up
+        # i = ...3, 2, 1, 0
+        for i in range(self._nx-1, -1, -1):
+            mps_r = [t for t in right_es]
+            mps_r.insert(0, cs[1])
+            mps_r.append(cs[3])
+
+            mpo_r = []
+            for j in range(self._ny):
+                mpo_r.append(dts[(i, j)])
+
+            mpo_r.insert(0, down_es[i])
+            mpo_r.append(up_es[i])
+
+            new_mps_r = self.ctmrg_move_right(mps_r, mpo_r)
+
+            cs[1] = new_mps_r[0] / torch.linalg.norm(new_mps_r[0])
+            cs[3] = new_mps_r[-1] / torch.linalg.norm(new_mps_r[-1])
+            for j in range(self._ny):
+                right_es[j] = new_mps_r[j+1] / torch.linalg.norm(new_mps_r[j+1])
+
+        # down boundary: from left to right
+        # j = 0, 1, 2, 3...
+        for j in range(self._ny):
+            mps_d = [t for t in down_es]
+            mps_d.insert(0, cs[0])
+            mps_d.append(cs[1])
+
+            # temporary MPO
+            mpo_d = []
+            for i in range(self._nx):
+                mpo_d.append(dts[(i, j)])
+
+            mpo_d.insert(0, left_es[j])
+            mpo_d.append(right_es[j])
+
+            new_mps_d = self.ctmrg_move_down(mps_d, mpo_d)
+
+            cs[0] = new_mps_d[0] / torch.linalg.norm(new_mps_d[0])
+            cs[1] = new_mps_d[-1] / torch.linalg.norm(new_mps_d[-1])
+            for i in range(self._nx):
+                down_es[i] = new_mps_d[i+1] / torch.linalg.norm(new_mps_d[i+1])
+
+        # left boundary: from down to up
+        # i = 0, 1, 2, 3...
+        for i in range(self._nx):
+            mps_l = [t for t in left_es]
+            mps_l.insert(0, cs[0])
+            mps_l.append(cs[2])
+     
+            mpo_l = []
+            for j in range(self._ny):
+                mpo_l.append(dts[(i, j)])
+
+            mpo_l.insert(0, down_es[i])
+            mpo_l.append(up_es[i])
+            
+            new_mps_l = self.ctmrg_move_left(mps_l, mpo_l)
+
+            cs[0] = new_mps_l[0] / torch.linalg.norm(new_mps_l[0])
+            cs[2] = new_mps_l[-1] / torch.linalg.norm(new_mps_l[-1])
+            for j in range(self._ny):
+                left_es[j] = new_mps_l[j+1] / torch.linalg.norm(new_mps_l[j+1])
+
+        return cs, up_es, down_es, left_es, right_es
 
     def ctm_onebody_measure(self, tps: torch.tensor, ctms: list, op: torch.tensor) -> list:
 
@@ -1094,12 +1308,12 @@ class SquareTPS(object):
             for j in range(self._ny):
                 # prepare up and down MPS
                 mps_u = [t.clone() for t in up_es]
-                mps_u.insert(0, cs[2])
-                mps_u.append(cs[3])
+                mps_u.insert(0, cs[2].clone())
+                mps_u.append(cs[3].clone())
 
                 mps_d = [t.clone() for t in down_es]
-                mps_d.insert(0, cs[0])
-                mps_d.append(cs[1])
+                mps_d.insert(0, cs[0].clone())
+                mps_d.append(cs[1].clone())
 
                 # renormalize up MPS until row-j
                 # l = ..., j+1
@@ -1109,8 +1323,8 @@ class SquareTPS(object):
                     for i in range(self._nx):
                         temp_mpo.append(dts[(i, l)])
 
-                    temp_mpo.insert(0, left_es[l])
-                    temp_mpo.append(right_es[l])
+                    temp_mpo.insert(0, left_es[l].clone())
+                    temp_mpo.append(right_es[l].clone())
 
                     mps_u = self.ctmrg_move_up(mps_u, temp_mpo)
 
@@ -1121,8 +1335,8 @@ class SquareTPS(object):
                     for i in range(self._nx):
                         temp_mpo.append(dts[(i, l)])
 
-                    temp_mpo.insert(0, left_es[l])
-                    temp_mpo.append(right_es[l])
+                    temp_mpo.insert(0, left_es[l].clone())
+                    temp_mpo.append(right_es[l].clone())
 
                     mps_d = self.ctmrg_move_down(mps_d, temp_mpo)
 
@@ -1131,8 +1345,8 @@ class SquareTPS(object):
                 for i in range(self._nx):
                     mpo.append(dts[(i, j)])
 
-                mpo.insert(0, left_es[j])
-                mpo.append(right_es[j])
+                mpo.insert(0, left_es[j].clone())
+                mpo.append(right_es[j].clone())
 
                 # build left and right environment tensors
                 # *--f,3
@@ -1183,12 +1397,12 @@ class SquareTPS(object):
             for i in range(self._nx):
                 # prepare left and right MPS
                 mps_l = [t.clone() for t in left_es]
-                mps_l.insert(0, cs[0])
-                mps_l.append(cs[2])
+                mps_l.insert(0, cs[0].clone())
+                mps_l.append(cs[2].clone())
 
                 mps_r = [t.clone() for t in right_es]
-                mps_r.insert(0, cs[1])
-                mps_r.append(cs[3])
+                mps_r.insert(0, cs[1].clone())
+                mps_r.append(cs[3].clone())
 
                 # renormalize left MPS until column-i
                 # k = 0, ..., i-1
@@ -1197,8 +1411,8 @@ class SquareTPS(object):
                     for j in range(self._ny):
                         temp_mpo.append(dts[(k, j)])
 
-                    temp_mpo.insert(0, down_es[k])
-                    temp_mpo.append(up_es[k])
+                    temp_mpo.insert(0, down_es[k].clone())
+                    temp_mpo.append(up_es[k].clone())
 
                     mps_l = self.ctmrg_move_left(mps_l, temp_mpo)
 
@@ -1209,8 +1423,8 @@ class SquareTPS(object):
                     for j in range(self._ny):
                         temp_mpo.append(dts[(k, j)])
 
-                    temp_mpo.insert(0, down_es[k])
-                    temp_mpo.append(up_es[k])
+                    temp_mpo.insert(0, down_es[k].clone())
+                    temp_mpo.append(up_es[k].clone())
 
                     mps_r = self.ctmrg_move_right(mps_r, temp_mpo)
 
@@ -1220,8 +1434,8 @@ class SquareTPS(object):
                 for j in range(self._ny):
                     mpo.append(dts[(i, j)])
 
-                mpo.insert(0, down_es[i])
-                mpo.append(up_es[i])
+                mpo.insert(0, down_es[i].clone())
+                mpo.append(up_es[i].clone())
 
                 '''
                 # another way to test norm
@@ -1493,80 +1707,15 @@ class SquareTPS(object):
         mps_l.insert(0, cs[0])
         mps_l.append(cs[2])
 
-        # i = 0, 1, 2, 3...
-        for i in range(self._nx):
-            mpo_l = []
-            for j in range(self._ny):
-                mpo_l.append(dts[(i, j)])
+        i = 1
+        mpo_l = []
+        for j in range(self._ny):
+            mpo_l.append(dts[(i, j)])
 
-            mpo_l.insert(0, down_es[i])
-            mpo_l.append(up_es[i])
-
-        # MPO-MPS operation
-        mpo_mps_l = [None]*4
-        mpo_mps_l[0] = torch.einsum('ab,acde->cbde', mps_l[0], mpo_l[0])
-        mpo_mps_l[-1] = torch.einsum('ab,acde->cbde', mps_l[-1], mpo_l[-1])
-        # f B b
-        # | | |--C 
-        # *****
-        # | | |--c
-        # e D d
-        for j in range(1, self._ny+1):
-            mpo_mps_l[j] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', mps_l[j], mpo_l[j])
-
-        rs_l, ls_l = [], []
-        # QR from botton to top
-        temp = mpo_mps_l[0]
-        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(0, 0))
-        rs_l.append(r)
-    
-        # merge residual matrix into next site
-        for j in range(1, self._ny+1):
-            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mpo_mps_l[j])
-            q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
-            rs_l.append(r)
-
-        # LQ from top to botton
-        temp = mpo_mps_l[-1]
-        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
-        ls_l.append(l)
-
-        for j in range(self._ny, 0, -1):
-            temp = torch.einsum('abcdefgh,defi->abcigh', mpo_mps_l[j], l)
-            q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
-            ls_l.append(l)
-        
-        ls_l.reverse()
-
-        prs_l, pls_l = [], []
-        for j in range(self._ny+1):
-            u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs_l[j], ls_l[j]))
-            # truncate
-            ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
-            ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
-            # inverse of square root
-            sst_inv = (1.0 / torch.sqrt(st)).diag()
-
-            if self._cflag:
-                sst_inv = sst_inv.cdouble()
-
-            pr = torch.einsum('abcd,de->abce', ls_l[j], vt_dagger @ sst_inv)
-            pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs_l[j])
-            prs_l.append(pr)
-            pls_l.append(pl)
-
-        # apply projectors to compress the MPO-MPS
-        # head and tail
-        new_mps_l = [None]*4
-        new_mps_l[0]= torch.einsum('abcd,bcde->ae', mpo_mps_l[0], prs_l[0])
-        new_mps_l[-1] = torch.einsum('abcd,ebcd->ea', pls_l[-1], mpo_mps_l[-1])
-
-        for j in range(1, self._ny+1):
-            new_mps_l[j] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls_l[j-1], mpo_mps_l[j], prs_l[j])
+        mpo_l.insert(0, down_es[i])
+        mpo_l.append(up_es[i])
 
         new_mps_l = self.ctmrg_move_left(mps_l, mpo_l)
-
-
 
         # new_mps = self.ctmrg_move_left(mps, mpo)
 
@@ -1582,99 +1731,60 @@ class SquareTPS(object):
         mpo_u[-1] = torch.permute(mpo_u[-1], (1, 0, 2, 3))
         mpo_u[1] = torch.permute(mpo_u[1], (6, 7, 0, 1, 2, 3, 4, 5))
         mpo_u[2] = torch.permute(mpo_u[2], (6, 7, 0, 1, 2, 3, 4, 5))
-
-        mpo_mps_u = [None]*4
-        mpo_mps_u[0] = torch.einsum('ab,cbde->adec', mps_u[0], mpo_u[0])
-        mpo_mps_u[-1] = torch.einsum('ab,cbde->adec', mps_u[-1], mpo_u[-1])
-        for i in range(1, self._nx+1):
-            mpo_mps_u[i] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', mps_u[i], mpo_u[i])
-
-        rs_u, ls_u = [], []
-        # QR from left to right
-        temp = mpo_mps_u[0]
-        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
-        rs_u.append(r)
-        
-        for i in range(1, self._nx+1):
-            # merge R in the next tensor
-            temp = torch.einsum('abcd,bcdefghi->aefghi', r, mpo_mps_u[i])
-            q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
-            rs_u.append(r)
-
-        # LQ from right to left
-        temp = mpo_mps_u[-1]
-        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
-        ls_u.append(l)
-
-        for i in range(self._nx, 0, -1):
-            # merge L into the previous tensor
-            temp = torch.einsum('abcdefgh,defi->abcigh', mpo_mps_u[i], l)
-            q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
-            ls_u.append(l)
-        
-        ls_u.reverse()
-
-        prs_u, pls_u = [], []
-
-        for i in range(self._nx+1):
-            u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', rs_u[i], ls_u[i]))
-            # truncate
-            ut, st, vt = u[:, :rho], s[:rho], v[:rho, :]
-            ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
-            # inverse of square root
-            sst_inv = (1.0 / torch.sqrt(st)).diag()
-
-            if self._cflag:
-                sst_inv = sst_inv.cdouble()
-
-            pr = torch.einsum('abcd,de->abce', ls_u[i], vt_dagger @ sst_inv)
-            pl = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, rs_u[i])
-            prs_u.append(pr)
-            pls_u.append(pl)
-
-        '''
-        new_mps_u = [None]*4
-        new_mps_u[0]= torch.einsum('abcd,abce->ed', mpo_mps_u[0], prs_u[0])
-        new_mps_u[-1] = torch.einsum('abcd,bcde->ae', pls_u[-1], mpo_mps_u[-1])
-
-        for i in range(1, self._nx+1):
-            new_mps_u[i] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls_u[i-1], mpo_mps_u[i], prs_u[i])
-        '''
-
         new_mps_u = self.ctmrg_move_up(mps_u, mpo_u)
 
-
-
-
-        print('test right projectors:')
-        for i in range(3):
-            print(i, torch.linalg.norm(prs_l[i]-prs_u[i]))
-
-        print('test left projectors:')
-        for i in range(3):
-            print(i, torch.linalg.norm(pls_l[i]-pls_u[i]))
-
-
-
         # rotate back
-        mpo_mps_u[0] = torch.permute(mpo_mps_u[0], (3, 0, 1, 2))
-        mpo_mps_u[-1] = torch.permute(mpo_mps_u[-1], (3, 0, 1, 2))
-
-        print('test MPO-MPS left-up rotation:')
-        for i in range(4):
-            print(i, mpo_mps_l[i].shape)
-            print(torch.linalg.norm(mpo_mps_l[i]-mpo_mps_u[i]))
-
         new_mps_u[0] = torch.permute(new_mps_u[0], (1, 0))
         new_mps_u[-1] = torch.permute(new_mps_u[-1], (1, 0))
 
-        print('test new MPS left-up rotation:')
+        print('test MPS left-up rotation:')
         for i in range(4):
             print(i, new_mps_l[i].shape)
             print(torch.linalg.norm(new_mps_l[i]-new_mps_u[i]))
 
+        return 1
 
+    def _ctmrg_22_right_down_rotate(self, dts, init_ctms):
 
-        # rotate back to left order
+        cs, up_es, down_es, left_es, right_es = init_ctms
+
+        rho = cs[0].shape[0]
+
+        # build a right MPS
+        mps_r = [t.clone() for t in right_es]
+        mps_r.insert(0, cs[1].clone())
+        mps_r.append(cs[3].clone())
+
+        i = 1
+        mpo_r = []
+        for j in range(self._ny):
+            mpo_r.append(dts[(i, j)])
+
+        mpo_r.insert(0, down_es[i].clone())
+        mpo_r.append(up_es[i].clone())
+
+        new_mps_r = self.ctmrg_move_right(mps_r, mpo_r)
+
+        # rotate the left MPS to a up one
+        # permute head and tail
+        mps_d = [t.clone() for t in mps_r]
+        mps_d[0] = torch.permute(mps_d[0], (1, 0))
+        mps_d[-1] = torch.permute(mps_d[-1], (1, 0))
+      
+        mpo_d = [t.clone() for t in mpo_r]
+        # permute MPO
+        mpo_d[0] = torch.permute(mpo_d[0], (1, 0, 2, 3))
+        mpo_d[-1] = torch.permute(mpo_d[-1], (1, 0, 2, 3))
+        mpo_d[1] = torch.permute(mpo_d[1], (6, 7, 0, 1, 2, 3, 4, 5))
+        mpo_d[2] = torch.permute(mpo_d[2], (6, 7, 0, 1, 2, 3, 4, 5))
+
+        new_mps_d = self.ctmrg_move_down(mps_d, mpo_d)
+
+        new_mps_d[0] = torch.permute(new_mps_d[0], (1, 0))
+        new_mps_d[-1] = torch.permute(new_mps_d[-1], (1, 0))
+
+        print('test MPS right-down rotation:')
+        for i in range(4):
+            print(i, new_mps_r[i].shape, torch.linalg.norm(new_mps_r[i]-new_mps_d[i]))
 
         return 1
