@@ -84,8 +84,14 @@ class SquareTPS(object):
 
         self._ctms = ctms
 
+        if self._ctms is not None:
+            self._rho = ctms[(0, 0)]['c'][0].shape[0]
+        else:
+            self._rho = 0
+
+
     @classmethod
-    def rand(cls, nx: int, ny: int, chi: int, cflag=False):
+    def rand(cls, nx: int, ny: int, chi: int, rho: int, cflag=False):
         r'''
         generate a random SquareTPS
 
@@ -94,12 +100,13 @@ class SquareTPS(object):
         nx: int, number of sites along x-direction in a unit cell
         ny: int, number of sites along y-direction in a unit cell
         chi: int, bond dimension of the site tensor
+        rho: int, bond dimension of boundary CTM tensors
         '''
 
         site_shape = (chi, chi, chi, chi, 2)
         site_tensors, link_tensors = {}, {}
 
-        for x, y in itertools.product(range(nx), range(ny)):
+        for i, j in itertools.product(range(nx), range(ny)):
             temp = torch.rand(site_shape)
             lam_x = torch.rand(chi).diag()
             lam_y = torch.rand(chi).diag()
@@ -110,14 +117,35 @@ class SquareTPS(object):
                 lam_y = lam_y.cdouble()
 
             # normalization
-            site_tensors[(x, y)] = temp / torch.linalg.norm(temp)
-            link_tensors[(x, y)] = [lam_x / torch.linalg.norm(lam_x), lam_y / torch.linalg.norm(lam_y)]
+            site_tensors[(i, j)] = temp / torch.linalg.norm(temp)
+            link_tensors[(i, j)] = [lam_x / torch.linalg.norm(lam_x), lam_y / torch.linalg.norm(lam_y)]
 
-        return cls(site_tensors, link_tensors)
+        # CTM tensors
+        if rho > 0:
+            # corners
+            cs = [torch.rand(rho, rho) for i in range(4)]
+
+            up_es = [torch.rand(rho, rho, chi, chi) for i in range(nx)]
+            # down_es = [torch.rand(rho, rho, chi, chi) for i in range(nx)]
+            down_es = [t.clone() for t in up_es]
+            left_es = [torch.rand(rho, rho, chi, chi) for j in range(ny)]
+            # right_es = [torch.rand(rho, rho, chi, chi) for j in range(ny)]
+            right_es = [t.clone() for t in left_es]
+
+            # each environment tensors as a dict
+            temp = {'c': cs, 'u': up_es, 'd': down_es, 'l': left_es, 'r': right_es}
+            ctms = {}
+            for i, j in itertools.product(range(nx), range(ny)):
+                ctms.update({(i, j): deepcopy(temp)})
+
+        else:
+            ctms = None
+
+        return cls(site_tensors=site_tensors, link_tensors=link_tensors, ctms=ctms)
 
 
     @classmethod
-    def randn(cls, nx: int, ny: int, chi: int, cflag=False):
+    def randn(cls, nx: int, ny: int, chi: int, rho: int, cflag=False):
         r'''
         generate a random SquareTPS
 
@@ -126,6 +154,7 @@ class SquareTPS(object):
         nx: int, number of sites along x-direction in a unit cell
         ny: int, number of sites along y-direction in a unit cell
         chi: int, bond dimension of the site tensor
+        rho: int, bond dimension of boundary CTM tensors
         '''
 
         site_shape = (chi, chi, chi, chi, 2)
@@ -250,19 +279,6 @@ class SquareTPS(object):
         return self.absorb_envs(self._site_tensors[site], envs)
 
 
-    def unified_tensor(self) -> torch.tensor:
-        r'''
-        return the TPS tensor in a unit cell as a whole tensor
-        new dimension is created as dim=0
-        '''
-
-        tens = []
-        for c in self._coords:
-            tens.append(self.merged_tensor(c))
-
-        return torch.stack(tens, dim=0)
-
-
     def double_tensor(self, c: tuple):
         r'''
         return a double tensors
@@ -276,23 +292,29 @@ class SquareTPS(object):
         return torch.einsum('ABCDe,abcde->AaBbCcDd', temp.conj(), temp)
 
 
-    def double_tensors(self, uc_coord: tuple[int]) -> dict:
+    def double_tensors(self) -> dict:
         r'''
         return double tensors as a dict
-
-        Parameters:
-        ----------
-        uc_coord: tuple[int], coordinate for current unit cell
         '''
 
-        dts = []
-        for j, i in itertools.product(range(self._ny), range(self._nx)):
-            c = (uc_coord[0]+i) % self._nx, (uc_coord[1]+j) % self._ny
-            temp = self.merged_tensor(c)
-            # (i, j) as the inner coordinate within the unit cell
-            dts.update({(i, j): torch.einsum('ABCDe,abcde->AaBbCcDd', temp.conj(), temp)})
+        dts = {}
+        for c in self._coords:
+            dts.update({c: self.double_tensor(c)})
 
         return dts
+
+
+    def unified_tensor(self, requires_grad=False) -> torch.tensor:
+        r'''
+        return the TPS tensor in a unit cell as a whole tensor
+        new dimension is created as dim=0
+        '''
+
+        tens = []
+        for c in self._coords:
+            tens.append(self.merged_tensor(c))
+
+        return torch.stack(tens, dim=0).requires_grad_(requires_grad)
 
 
     def init_ctms(self, init_ctms):
@@ -300,6 +322,7 @@ class SquareTPS(object):
         self._ctms = init_ctms
 
         return 1
+
 
     def simple_update_proj(self, time_evo_mpo: tuple):
         r'''
@@ -846,32 +869,36 @@ class SquareTPS(object):
         return new_mps, s_vals
 
 
-    def ctmrg_move_left(self, ucc: tuple):
+    def ctmrg_move_left(self, ucc: tuple, dts: dict):
         r'''
         a left move of CTMRG
 
         Parameters:
         ----------
-        ucc: tuple[int], coordinate of unit cell
+        ucc: tuple[int], coordinate as a label of unit cell
         '''
 
         assert self._ctms is not None, 'CTM tensors not initialized'
+
+        rho = self._rho
 
         # CTM tensors for current unit cell
         ctms = self._ctms[ucc]
         cs, up_es, down_es, left_es = ctms['c'], ctms['u'], ctms['d'], ctms['l']
 
-        rho = cs[0].shape[0]
-
         # temporary left boundary MPS: from down to up
         mps = [t for t in left_es]
         mps.insert(0, cs[0])
         mps.append(cs[2])
+
         # temporary MPO
         mpo = []
         for j in range(self._ny):
+            # find the corresponding double tensor
+            # two kinds of translation
             c = ucc[0], (ucc[1]+j) % self._ny
-            mpo.append(self.double_tensor(c))
+            # mpo.append(self.double_tensor(c))
+            mpo.append(dts[c])
 
         mpo.insert(0, down_es[0])
         mpo.append(up_es[0])
@@ -2133,3 +2160,6 @@ class SquareTPS(object):
             print(i, new_mps_r[i].shape, torch.linalg.norm(new_mps_r[i]-new_mps_d[i]))
 
         return 1
+
+if __name__ == '__main__':
+    print('test')
