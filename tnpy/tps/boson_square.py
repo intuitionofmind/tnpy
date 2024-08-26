@@ -719,21 +719,44 @@ class SquareTPS(object):
 
         return new_mps, specs
 
-    def ctmrg_move_up(self, mps: list, mpo: list):
+
+    def ctmrg_move_up(self, ucc: tuple, dts: dict):
         r'''
-        one up step of CTMRG Parameters:
+        one up step of CTMRG
+
+        Parameters:
         ----------
-        mps: list[tensor], the boundary MPS
-        mpo: list[tensor], the MPO
+        ucc: tuple[int], coordinate as a label of unit cell
+        dts: dict, dict of double tensors
         '''
 
-        assert len(mps) == self._nx+2, 'this boundary MPS is not valid for length'
-        assert len(mpo) == self._nx+2, 'this MPO is not valid for length'
+        assert self._ctms is not None, 'CTM tensors not initialized'
 
-        rho = mps[0].shape[0]
+        rho = self._rho
+
+        # CTM tensors for current unit cell
+        ctms = self._ctms[ucc]
+        cs, left_es, right_es, up_es = ctms['c'], ctms['l'], ctms['r'], ctms['u']
+
+        # up boundary: from left to right
+        # build temporary up MPS
+        mps = [t for t in up_es]
+        mps.insert(0, cs[2])
+        mps.append(cs[3])
+
+        j = self._ny-1
+        # temporary MPO
+        mpo = []
+        for i in range(self._nx):
+            temp_c = (ucc[0]+i) % self._nx, (ucc[1]+j) % self._ny
+            mpo.append(dts[temp_c])
+
+        # head and tail of MPO
+        # from other edge tensors
+        mpo.insert(0, left_es[j])
+        mpo.append(right_es[j])
 
         # MPO-MPS operation
-        # need a new variable, otherwise will change the input arguments
         mpo_mps = [None]*(self._nx+2)
         mpo_mps[0] = torch.einsum('ab,cbde->adec', mps[0], mpo[0])
         mpo_mps[-1] = torch.einsum('ab,cbde->adec', mps[-1], mpo[-1])
@@ -789,22 +812,55 @@ class SquareTPS(object):
             pls.append(pl)
 
         # apply projectors to compress the MPO-MPS
-        new_mps = [None]*(self._nx+2)
-        new_mps[0]= torch.einsum('abcd,abce->ed', mpo_mps[0], prs[0])
-        new_mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mpo_mps[-1])
+        mps = [None]*(self._nx+2)
+        mps[0]= torch.einsum('abcd,abce->ed', mpo_mps[0], prs[0])
+        mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mpo_mps[-1])
 
         for i in range(1, self._nx+1):
-            new_mps[i] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i-1], mpo_mps[i], prs[i])
+            mps[i] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i-1], mpo_mps[i], prs[i])
 
-        return new_mps, s_vals
+        # update CTM tensors
+        # a up move means a shift of ucc
+        new_ucc = ucc[0], (ucc[1]-1) % self._ny
+        ctms = self._ctms[new_ucc]
+        cs, up_es = ctms['c'], ctms['u']
+
+        cs[2] = mps[0] / torch.linalg.norm(mps[0])
+        cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
+        for j in range(self._ny):
+            up_es[j] = mps[j+1] / torch.linalg.norm(mps[j+1])
+
+        self._ctms[new_ucc].update({'c': cs})
+        self._ctms[new_ucc].update({'u': up_es})
+
+        return s_vals
 
 
-    def ctmrg_move_down(self, mps: list, mpo: list):
+    def ctmrg_move_down(self, ucc: tuple, dts: dict):
+        r'''
+        a down step move of CTMRG
+        '''
 
-        assert len(mps) == self._nx+2, 'this boundary MPS is not valid for length'
-        assert len(mpo) == self._nx+2, 'this MPO is not valid for length'
+        assert self._ctms is not None, 'CTM tensors not initialized'
 
-        rho = mps[0].shape[0]
+        rho = self._rho
+
+        # CTM tensors for current unit cell
+        ctms = self._ctms[ucc]
+        cs, left_es, right_es, down_es = ctms['c'], ctms['l'], ctms['r'], ctms['d']
+
+        mps = [t for t in down_es]
+        mps.insert(0, cs[0])
+        mps.append(cs[1])
+
+        j = 0
+        mpo = []
+        for i in range(self._nx):
+            temp_c = (ucc[0]+i) % self._nx, (ucc[1]+j) % self._ny
+            mpo.append(dts[temp_c])
+
+        mpo.insert(0, left_es[j])
+        mpo.append(right_es[j])
 
         # MPO-MPS operation
         mpo_mps = [None]*(self._nx+2)
@@ -858,15 +914,29 @@ class SquareTPS(object):
             pls.append(pl)
 
         # apply projectors to compress the MPS
-        new_mps = [None]*(self._nx+2)
+        mps = [None]*(self._nx+2)
         # head and tail
-        new_mps[0]= torch.einsum('abcd,abce->ed', mpo_mps[0], prs[0])
-        new_mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mpo_mps[-1])
+        mps[0]= torch.einsum('abcd,abce->ed', mpo_mps[0], prs[0])
+        mps[-1] = torch.einsum('abcd,bcde->ae', pls[-1], mpo_mps[-1])
 
         for i in range(self._nx):
-            new_mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mpo_mps[i+1], prs[i+1])
+            mps[i+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[i], mpo_mps[i+1], prs[i+1])
 
-        return new_mps, s_vals
+        # update CTM tensor
+        # a down move means a shift of ucc
+        new_ucc = ucc[0], (ucc[1]+1) % self._ny
+        ctms = self._ctms[new_ucc]
+        cs, down_es = ctms['c'], ctms['u']
+
+        cs[0] = mps[0] / torch.linalg.norm(mps[0])
+        cs[1] = mps[-1] / torch.linalg.norm(mps[-1])
+        for j in range(self._ny):
+            down_es[j] = mps[j+1] / torch.linalg.norm(mps[j+1])
+
+        self._ctms[new_ucc].update({'c': cs})
+        self._ctms[new_ucc].update({'d': down_es})
+
+        return s_vals
 
 
     def ctmrg_move_left(self, ucc: tuple, dts: dict):
@@ -876,6 +946,7 @@ class SquareTPS(object):
         Parameters:
         ----------
         ucc: tuple[int], coordinate as a label of unit cell
+        dts: dict, double tensors
         '''
 
         assert self._ctms is not None, 'CTM tensors not initialized'
@@ -893,17 +964,17 @@ class SquareTPS(object):
 
         # temporary MPO
         mpo = []
+        i = 0
         for j in range(self._ny):
             # find the corresponding double tensor
             # two kinds of translation
-            c = ucc[0], (ucc[1]+j) % self._ny
-            # mpo.append(self.double_tensor(c))
-            mpo.append(dts[c])
+            temp_c = (ucc[0]+i) % self._nx, (ucc[1]+j) % self._ny
+            mpo.append(dts[temp_c])
 
-        mpo.insert(0, down_es[0])
-        mpo.append(up_es[0])
+        mpo.insert(0, down_es[i])
+        mpo.append(up_es[i])
 
-        mpo_mps = [None]*4
+        mpo_mps = [None]*(self._ny+2)
         mpo_mps[0] = torch.einsum('ab,acde->cbde', mps[0], mpo[0])
         mpo_mps[-1] = torch.einsum('ab,acde->cbde', mps[-1], mpo[-1])
         # f B b
@@ -963,7 +1034,7 @@ class SquareTPS(object):
 
         # apply projectors to compress the MPO-MPS
         # head and tail
-        mps = [None]*4
+        mps = [None]*(self._ny+2)
         mps[0]= torch.einsum('abcd,bcde->ae', mpo_mps[0], prs[0])
         mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mpo_mps[-1])
 
@@ -971,11 +1042,11 @@ class SquareTPS(object):
             mps[j] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j-1], mpo_mps[j], prs[j])
 
         # update CTM tensors
-        # a left move means uc_coord changes
+        # a left move means a shift of ucc
         new_ucc = (ucc[0]+1) % self._nx, ucc[1]
         ctms = self._ctms[new_ucc]
         cs, left_es = ctms['c'], ctms['l']
-        # update left CTM tensors
+
         cs[0] = mps[0] / torch.linalg.norm(mps[0])
         cs[2] = mps[-1] / torch.linalg.norm(mps[-1])
         for j in range(self._ny):
@@ -987,12 +1058,32 @@ class SquareTPS(object):
         return s_vals
 
 
-    def ctmrg_move_right(self, mps: list, mpo: list):
+    def ctmrg_move_right(self, ucc: tuple, dts: dict):
+        r'''
+        a right move of CTMRG
+        '''
 
-        assert len(mps) == self._ny+2, 'this boundary MPS is not valid for length'
-        assert len(mpo) == self._ny+2, 'this MPO is not valid for length'
+        assert self._ctms is not None, 'CTM tensors not initialized'
 
-        rho = mps[0].shape[0]
+        rho = self._rho
+
+        # CTM tensors for current unit cell
+        ctms = self._ctms[ucc]
+        cs, up_es, down_es, right_es = ctms['c'], ctms['u'], ctms['d'], ctms['r']
+
+        # right boundary: from down to up
+        mps = [t for t in right_es]
+        mps.insert(0, cs[1])
+        mps.append(cs[3])
+
+        mpo = []
+        i = self._nx-1
+        for j in range(self._ny):
+            temp_c = (ucc[0]+i) % self._nx, (ucc[1]+j) % self._ny
+            mpo.append(dts[temp_c])
+
+        mpo.insert(0, down_es[i])
+        mpo.append(up_es[i])
 
         mpo_mps = [None]*(self._ny+2)
         mpo_mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
@@ -1047,135 +1138,29 @@ class SquareTPS(object):
             pls.append(pl)
 
         # apply projectors to compress the MPO-MPS
-        new_mps = [None]*(self._ny+2)
+        mps = [None]*(self._ny+2)
         # head and tail
-        new_mps[0]= torch.einsum('abcd,bcde->ae', mpo_mps[0], prs[0])
-        new_mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mpo_mps[-1])
+        mps[0]= torch.einsum('abcd,bcde->ae', mpo_mps[0], prs[0])
+        mps[-1] = torch.einsum('abcd,ebcd->ea', pls[-1], mpo_mps[-1])
 
         for j in range(1, self._ny+1):
-            new_mps[j] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j-1], mpo_mps[j], prs[j])
+            mps[j] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pls[j-1], mpo_mps[j], prs[j])
 
-        return new_mps, s_vals
+        # a right move means ucc changes
+        new_ucc = (ucc[0]-1) % self._nx, ucc[1]
+        ctms = self._ctms[new_ucc]
+        cs, right_es = ctms['c'], ctms['r']
 
-
-    def _ctmrg(self, dts: dict, init_ctms: tuple):
-        r'''
-        one step of CTMRG
-        absorb the unit cell along four directions, respectively
-
-        Parameters:
-        dts: dict[torch.tensor], {key: coordinate; value: double tensor
-        init_ctms: tuple[torch.tensor], initial CTM tensors
-        '''
-
-        cs, up_es, down_es, left_es, right_es = init_ctms
-
-        # temporary corner matrices
-        c0, c1, c2, c3 = [], [], [], []
-
-        # up boundary: from left to right
-        # build temporary up MPS
-        mps = [t.clone() for t in up_es]
-        mps.insert(0, cs[2].clone())
-        mps.append(cs[3].clone())
-
-        # renormalization:
-        # merge a whole unit cell into this MPS
-        # j = ...3, 2, 1, 0
-        for j in range(self._ny-1, -1, -1):
-            # temporary MPO
-            mpo = []
-            for i in range(self._nx):
-                mpo.append(dts[(i, j)])
-            # head and tail of MPO
-            # from other edge tensors
-            mpo.insert(0, left_es[j].clone())
-            mpo.append(right_es[j].clone())
-
-            mps = self.ctmrg_move_up(mps, mpo)
-
-            c2.append(mps[0])
-            c3.append(mps[-1])
-
-        # update edge tensors
-        for i in range(self._nx):
-            up_es[i] = mps[i+1].clone() / torch.linalg.norm(mps[i+1])
-
-        # down boundary: from left to right
-        mps = [t.clone() for t in down_es]
-        mps.insert(0, cs[0].clone())
-        mps.append(cs[1].clone())
-
-        # j = 0, 1, 2, 3...
+        # update
+        cs[1] = mps[0] / torch.linalg.norm(mps[0])
+        cs[3] = mps[-1] / torch.linalg.norm(mps[-1])
         for j in range(self._ny):
-            # temporary MPO
-            mpo = []
-            for i in range(self._nx):
-                mpo.append(dts[(i, j)])
+            right_es[j] = mps[j+1] / torch.linalg.norm(mps[j+1])
 
-            mpo.insert(0, left_es[j].clone())
-            mpo.append(right_es[j].clone())
+        self._ctms[new_ucc].update({'c': cs})
+        self._ctms[new_ucc].update({'r': right_es})
 
-            mps = self.ctmrg_move_down(mps, mpo)
-
-            c0.append(mps[0])
-            c1.append(mps[-1])
-
-        for i in range(self._nx):
-            down_es[i] = mps[i+1].clone() / torch.linalg.norm(mps[i+1])
-
-        # left boundary: from down to up
-        mps = [t.clone() for t in left_es]
-        mps.insert(0, cs[0].clone())
-        mps.append(cs[2].clone())
-        
-        # i = 0, 1, 2, 3...
-        for i in range(self._nx):
-            mpo = []
-            for j in range(self._ny):
-                mpo.append(dts[(i, j)])
-
-            mpo.insert(0, down_es[i].clone())
-            mpo.append(up_es[i].clone())
-            
-            mps = self.ctmrg_move_left(mps, mpo)
-
-            c0.append(mps[0])
-            c2.append(mps[-1])
-
-        for j in range(self._ny):
-            left_es[j] = mps[j+1].clone() / torch.linalg.norm(mps[j+1])
-
-        # right boundary: from down to up
-        mps = [t.clone() for t in right_es]
-        mps.insert(0, cs[1].clone())
-        mps.append(cs[3].clone())
-
-        # i = ...3, 2, 1, 0
-        for i in range(self._nx-1, -1, -1):
-            mpo = []
-            for j in range(self._ny):
-                mpo.append(dts[(i, j)])
-
-            mpo.insert(0, down_es[i].clone())
-            mpo.append(up_es[i].clone())
-
-            mps = self.ctmrg_move_right(mps, mpo)
-
-            c1.append(mps[0])
-            c3.append(mps[-1])
-
-        for j in range(self._ny):
-            right_es[j] = mps[j+1].clone() / torch.linalg.norm(mps[j+1])
-
-        # update corners
-        temp_cs = c0, c1, c2, c3
-        for i in range(4):
-            # print(len(temp_cs[i]))
-            cs[i] = sum(temp_cs[i])
-            cs[i] = cs[i] / torch.linalg.norm(cs[i])
-
-        return cs, up_es, down_es, left_es, right_es
+        return s_vals
 
  
     def ctmrg_ud(self, dts: dict, init_ctms: tuple):
