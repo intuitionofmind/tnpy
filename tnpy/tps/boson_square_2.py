@@ -267,6 +267,7 @@ class SquareTPS(object):
         6           TDOT        AdeBC,Dd->ABCDe                          ABCDe->ABCDe)
         '''
 
+        # print(t.dtype, envs[0].dtype, envs[1].dtype, envs[2].dtype)
         temp = torch.einsum('Aa,abcde->Abcde', envs[0], t)
         temp = torch.einsum('abcde,bB->aBcde', temp, envs[1])
         temp = torch.einsum('abcde,cC->abCde', temp, envs[2])
@@ -385,7 +386,7 @@ class SquareTPS(object):
             ut, st, vt = u[:, :self._chi], s[:self._chi], v[:self._chi, :]
             ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
 
-            sst = torch.sqrt(st)
+            sst = torch.sqrt(st).to(self._dtype)
             # safe inverse because of the trunction
             sst_inv = (1.0 / sst).diag().to(self._dtype)
 
@@ -394,7 +395,7 @@ class SquareTPS(object):
             pl = torch.einsum('ab,bcd->acd', sst_inv @ ut_dagger, r)
 
             # update the link tensor
-            self._link_tensors[c][0] = (st / torch.linalg.norm(st)).diag()
+            self._link_tensors[c][0] = (st / torch.linalg.norm(st)).diag().to(self._dtype)
 
             # apply projectors
             updated_mts = [
@@ -406,8 +407,8 @@ class SquareTPS(object):
             tens_env[0][2], tens_env[1][0] = sst.diag(), sst.diag()
 
             tens_env_inv = [
-                    [torch.linalg.pinv(m) for m in tens_env[0]],
-                    [torch.linalg.pinv(m) for m in tens_env[1]]]
+                    [torch.linalg.pinv(m).to(self._dtype) for m in tens_env[0]],
+                    [torch.linalg.pinv(m).to(self._dtype) for m in tens_env[1]]]
             updated_ts = [
                     self.absorb_envs(updated_mts[0], tens_env_inv[0]),
                     self.absorb_envs(updated_mts[1], tens_env_inv[1])]
@@ -449,7 +450,7 @@ class SquareTPS(object):
                 ut, st, vt = u[:, :self._chi], s[:self._chi], v[:self._chi, :]
                 ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
 
-                sst = torch.sqrt(st)
+                sst = torch.sqrt(st).to(self._dtype)
                 sst_inv = (1.0 / sst).diag().to(self._dtype)
 
                 # build projectors
@@ -457,7 +458,7 @@ class SquareTPS(object):
                 pl = torch.einsum('ab,bcd->acd', sst_inv @ ut_dagger, r)
 
                 # update the link tensor
-                self._link_tensors[c][1] = (st / torch.linalg.norm(st)).diag()
+                self._link_tensors[c][1] = (st / torch.linalg.norm(st)).diag().to(self._dtype)
 
                 # apply projectors
                 updated_mts = [
@@ -472,8 +473,8 @@ class SquareTPS(object):
                 tens_env[0][1], tens_env[1][3] = sst.diag(), sst.diag()
 
                 tens_env_inv = [
-                        [torch.linalg.pinv(m) for m in tens_env[0]],
-                        [torch.linalg.pinv(m) for m in tens_env[1]]]
+                        [torch.linalg.pinv(m).to(self._dtype) for m in tens_env[0]],
+                        [torch.linalg.pinv(m).to(self._dtype) for m in tens_env[1]]]
                 updated_ts = [
                         self.absorb_envs(updated_mts[0], tens_env_inv[0]),
                         self.absorb_envs(updated_mts[1], tens_env_inv[1])]
@@ -567,7 +568,7 @@ class SquareTPS(object):
 
         # SVD to MPO
         u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
-        ss = torch.sqrt(s).diag()
+        ss = torch.sqrt(s).diag().to(self._dtype)
         us = torch.einsum('Aa,abc->Abc', ss, u)
         sv = torch.einsum('Aa,abc->Abc', ss, v)
 
@@ -588,12 +589,12 @@ class SquareTPS(object):
             # bond Lambda matrices mimic the infinite TPS environments 
             envs = self.site_envs(c)
             # replace the connected bond by an identity
-            envs[2] = torch.eye(self._chi)
+            envs[2] = torch.eye(self._chi).to(self._dtype)
             temp = self.absorb_envs(mts[c], envs).conj()
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cx)
-            envs[0] = torch.eye(self._chi)
+            envs[0] = torch.eye(self._chi).to(self._dtype)
             temp = self.absorb_envs(mts[cx], envs).conj()
             mts_conj.update({cx: temp})
 
@@ -616,12 +617,12 @@ class SquareTPS(object):
 
             envs = self.site_envs(c)
             # replace the connected bond by an identity
-            envs[1] = torch.eye(self._chi)
+            envs[1] = torch.eye(self._chi).to(self._dtype)
             temp = self.absorb_envs(mts[c], envs).conj()
             mts_conj.update({c: temp})
 
             envs = self.site_envs(cy)
-            envs[3] = torch.eye(self._chi)
+            envs[3] = torch.eye(self._chi).to(self._dtype)
             temp = self.absorb_envs(mts[cy], envs).conj()
             mts_conj.update({cy: temp})
 
@@ -763,6 +764,377 @@ class SquareTPS(object):
             svals.update({c: temp_d})
 
         return svals
+
+
+    def ctmrg_mu(self, c: tuple, dts: dict):
+        r'''
+        one step of CTMRG for a site
+
+        Parameters:
+        ----------
+        c: tuple[int], coordinate of a site within the unit cell
+        dts: dict, double tensors
+        '''
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][2], self._ctms[c][5], self._ctms[c][3]]
+        mpo = [self._ctms[c][6], dts[c], self._ctms[c][7]]
+
+        mpo_mps = [None]*3
+
+        mpo_mps[0] = torch.einsum('ab,cbde->adec', mps[0], mpo[0])
+        mpo_mps[1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', mps[1], mpo[1])
+        mpo_mps[2] = torch.einsum('ab,cbde->adec', mps[2], mpo[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        cb = (c[0]-1) % self._nx, c[1]
+        temp_mps = [self._ctms[cb][2], self._ctms[cb][5], self._ctms[c][5], self._ctms[c][3]]
+        temp_mpo = [self._ctms[cb][6], dts[cb], dts[c], self._ctms[c][7]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,cbde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,cbde->adec', temp_mps[3], temp_mpo[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        cf = (c[0]+1) % self._nx, c[1]
+        temp_mps = [self._ctms[c][2], self._ctms[c][5], self._ctms[cf][5], self._ctms[cf][3]]
+        temp_mpo = [self._ctms[c][6], dts[c], dts[cf], self._ctms[cf][7]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,cbde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,cbde->adec', temp_mps[3], temp_mpo[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # apply projectors and update CTM tensors
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,bcde->ae', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # a up-move means absorbing this row
+        c_new = c[0], (c[1]-1) % self._ny
+        self._ctms[c_new][2] = mps[0] / norms[0]
+        self._ctms[c_new][5] = mps[1] / norms[1]
+        self._ctms[c_new][3] = mps[2] / norms[2]
+
+        return 1
+
+
+    def ctmrg_md(self, c: tuple, dts: dict):
+        r'''
+        one step of CTMRG for a site
+
+        Parameters:
+        ----------
+        c: tuple[int], coordinate of a site with the unit cell
+        dts: dict, double tensors
+        '''
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][0], self._ctms[c][4], self._ctms[c][1]]
+        mpo = [self._ctms[c][6], dts[c], self._ctms[c][7]]
+
+        mpo_mps = [None]*3
+        mpo_mps[0] = torch.einsum('ab,bcde->adec', mps[0], mpo[0])
+        mpo_mps[1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', mps[1], mpo[1])
+        mpo_mps[2] = torch.einsum('ab,bcde->adec', mps[2], mpo[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        cb = (c[0]-1) % self._nx, c[1]
+        temp_mps = [self._ctms[cb][0], self._ctms[cb][4], self._ctms[c][4], self._ctms[c][1]]
+        temp_mpo = [self._ctms[cb][6], dts[cb], dts[c], self._ctms[c][7]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,bcde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,bcde->adec', temp_mps[3], temp_mpo[3])
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        cf = (c[0]+1) % self._nx, c[1]
+        temp_mps = [self._ctms[c][0], self._ctms[c][4], self._ctms[cf][4], self._ctms[cf][1]]
+        temp_mpo = [self._ctms[c][6], dts[c], dts[cf], self._ctms[cf][7]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,bcde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,bcde->adec', temp_mps[3], temp_mpo[3])
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # apply projectors and update CTM tensors
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,bcde->ae', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        c_new = c[0], (c[1]+1) % self._ny
+        self._ctms[c_new][0] = mps[0] / norms[0]
+        self._ctms[c_new][4] = mps[1] / norms[1]
+        self._ctms[c_new][1] = mps[2] / norms[2]
+
+        return 1
+
+
+    def ctmrg_ml(self, c: tuple, dts: dict):
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][0], self._ctms[c][6], self._ctms[c][2]]
+        mpo = [self._ctms[c][4], dts[c], self._ctms[c][5]]
+
+        mpo_mps = [None]*3
+        mpo_mps[0] = torch.einsum('ab,acde->cbde', mps[0], mpo[0])
+        # f B b
+        # | | |--C 
+        # *****
+        # | | |--c
+        # e D d
+        mpo_mps[1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', mps[1], mpo[1])
+        mpo_mps[2] = torch.einsum('ab,acde->cbde', mps[2], mpo[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        cb = c[0], (c[1]-1) % self._ny 
+        temp_mps = [self._ctms[cb][0], self._ctms[cb][6], self._ctms[c][6], self._ctms[c][2]]
+        temp_mpo = [self._ctms[cb][4], dts[cb], dts[c], self._ctms[c][5]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,acde->cbde', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,acde->cbde', temp_mps[3], temp_mpo[3])
+        
+        # QR and LQ from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(0, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        # inverse of square root
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        cf = c[0], (c[1]+1) % self._ny
+        temp_mps = [self._ctms[c][0], self._ctms[c][6], self._ctms[cf][6], self._ctms[cf][2]]
+        temp_mpo = [self._ctms[c][4], dts[c], dts[cf], self._ctms[cf][5]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,acde->cbde', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,acde->cbde', temp_mps[3], temp_mpo[3])
+        
+        # QR and LQ from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(0, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,bcde->ae', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,ebcd->ea', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # a left-move means:
+        c_new = (c[0]+1) % self._nx, c[1]
+        self._ctms[c_new][0] = mps[0] / norms[0]
+        self._ctms[c_new][6] = mps[1] / norms[1]
+        self._ctms[c_new][2] = mps[2] / norms[2]
+
+        return 1
+
+
+    def ctmrg_mr(self, c: tuple, dts: dict):
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][1], self._ctms[c][7], self._ctms[c][3]]
+        mpo = [self._ctms[c][4], dts[c], self._ctms[c][5]]
+
+        mpo_mps = [None]*3
+        mpo_mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
+        mpo_mps[1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[1], mps[1])
+        mpo_mps[2] = torch.einsum('abcd,be->aecd', mpo[2], mps[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        cb = c[0], (c[1]-1) % self._ny 
+        temp_mps = [self._ctms[cb][1], self._ctms[cb][7], self._ctms[c][7], self._ctms[c][3]]
+        temp_mpo = [self._ctms[cb][4], dts[cb], dts[c], self._ctms[c][5]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('abcd,be->aecd', temp_mpo[0], temp_mps[0])
+        temp_mpo_mps[1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[1], temp_mps[1])
+        temp_mpo_mps[2] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[2], temp_mps[2])
+        temp_mpo_mps[3] = torch.einsum('abcd,be->aecd', temp_mpo[3], temp_mps[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        cf = c[0], (c[1]+1) % self._ny
+        temp_mps = [self._ctms[c][1], self._ctms[c][7], self._ctms[cf][7], self._ctms[cf][3]]
+        temp_mpo = [self._ctms[c][4], dts[c], dts[cf], self._ctms[cf][5]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('abcd,be->aecd', temp_mpo[0], temp_mps[0])
+        temp_mpo_mps[1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[1], temp_mps[1])
+        temp_mpo_mps[2] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[2], temp_mps[2])
+        temp_mpo_mps[3] = torch.einsum('abcd,be->aecd', temp_mpo[3], temp_mps[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,bcde->ae', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,ebcd->ea', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # a right-move means:
+        c_new = (c[0]-1) % self._nx, c[1]
+        self._ctms[c_new][1] = mps[0] / norms[0]
+        self._ctms[c_new][7] = mps[1] / norms[1]
+        self._ctms[c_new][3] = mps[2] / norms[2]
+
+        return 1
+
+
 
 
     def ctmrg_move_up(self, dts: dict):
@@ -1363,95 +1735,41 @@ class SquareTPS(object):
             temp = torch.einsum('eDdg,efAa,AaBibCcDd,ghCc->fBibh', temp, self._ctms[c][6], impure_dts[0], self._ctms[c][7])
             temp = torch.einsum('eDidg,efAa,AaBbCcDid,ghCc->fBbh', temp, self._ctms[cy][6], impure_dts[1], self._ctms[cy][7])
 
- 
             num = torch.einsum('abcd,abcd', temp, env_u)
             meas.append(num / den)
 
         return torch.tensor(meas)
 
 
-    def ctm_twobody_measure_test(self, op):
-
-        # SVD two-body operator to MPO
-        u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
-        ss = torch.sqrt(s).diag()
-        us = torch.einsum('Aa,abc->Abc', ss, u)
-        sv = torch.einsum('Aa,abc->Abc', ss, v)
-
-        op_mpo = us, sv
+    def ctm_onebody_measure(self, c, op: torch.tensor):
 
         mts, mts_conj = {}, {}
-        for i, c in enumerate(self._coords):
-            temp = self.merged_tensor(c)
-            mts.update({c: temp})
-            mts_conj.update({c: temp.conj()})
+        for c in self._coords:
+            t = self.merged_tensor(c)
+            mts.update({c: t})
+            mts_conj.update({c: t.conj()})
 
         # double tensors
         dts = self.double_tensors()
 
-        meas = []
+        # for c in self._coords:
 
-        c = (0, 0)
-        cx = (c[0]+1) % self._nx, c[1]
+        # contraction
+        env_l = torch.einsum('ab,bcde,fc->adef', self._ctms[c][0], self._ctms[c][6], self._ctms[c][2])
+        env_r = torch.einsum('ab,bcde,fc->adef', self._ctms[cx][1], self._ctms[cx][7], self._ctms[cx][3])
 
-        impure_dts = []
-        impure_dts.append(torch.einsum('ABCDE,fEe,abcde->AaBbCfcDd', mts_conj[c], op_mpo[0], mts[c]))
-        impure_dts.append(torch.einsum('ABCDE,fEe,abcde->AfaBbCcDd', mts_conj[cx], op_mpo[1], mts[cx]))
-
-        # down MPS
-        cs, down_es, left_es, right_es = self._ctms[c]['c'], self._ctms[c]['d'], self._ctms[c]['l'], self._ctms[c]['r']
-        mps_d = [t for t in down_es]
-        mps_d.insert(0, cs[0])
-        mps_d.append(cs[1])
-
-        # MPO
-        mpo = [dts[(i, 0)] for i in range(self._nx)]
-        mpo.insert(0, left_es[0])
-        mpo.append(right_es[0])
-
-        # up MPS as a ctmrg_move_up()
-        c_sd = c[0], (c[1]-1) % self._ny
-        cs, up_es = self._ctms[c_sd]['c'], self._ctms[c_sd]['u']
-        mps_u = [t for t in up_es]
-        mps_u.insert(0, cs[2])
-        mps_u.append(cs[3])
-
-        env_l = torch.einsum('ab,bcde,fc->adef', mps_d[0], mpo[0], mps_u[0])
-        env_r = torch.einsum('ab,bcde,fc->adef', mps_d[-1], mpo[-1], mps_u[-1])
-
-        # denominator
-        # as contraction from left to right
         temp = env_l.clone()
-        for i in range(self._nx):
-            temp = torch.einsum(
-                    'eAag,efDd,AaBbCcDd,ghBb->fCch',
-                    temp, mps_d[i+1], mpo[i+1], mps_u[i+1])
-
+        temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, self._ctms[c][4], dts[c], self._ctms[c][5])
         den = torch.einsum('abcd,abcd', temp, env_r)
 
-        # numerator
+        impure_dt = torch.einsum('ABCDE,fEe,abcde->AaBbCfcDd', mts_conj[c], op, mts[c])
         temp = env_l.clone()
-        i = 0
-        for k in range(self._nx):
-            if i == k:
-                temp = torch.einsum(
-                        'eAag,efDd,AaBbCicDd,ghBb->fCich',
-                        temp, mps_d[k+1], impure_dts[0], mps_u[k+1])
-            elif (i+1) == k:
-                temp = torch.einsum(
-                        'eAiag,efDd,AiaBbCcDd,ghBb->fCch',
-                        temp, mps_d[k+1], impure_dts[1], mps_u[k+1])
-            else:
-                temp = torch.einsum(
-                        'eAag,efDd,AaBbCcDd,ghBb->fCch',
-                        temp, mps_d[k+1], mpo[k+1], mps_u[k+1])
+        temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, self._ctms[c][4], impure_dt, self._ctms[c][5])
+        den = torch.einsum('abcd,abcd', temp, env_r)
 
-        num = torch.einsum('abcd,abcd', temp, env_r)
-        meas.append(num / den)
+        print(den, num)
 
-        print((num / den).item())
-
-        return torch.tensor(meas)
+        return (den / num)
 
 ####### below are temporary test functions ########
 
@@ -1750,6 +2068,389 @@ class SquareTPS(object):
 
         return 1
 
+
+    def ctmrg_mu_test(self, c: tuple, dts: dict):
+        r'''
+        one step of CTMRG for a site
+
+        Parameters:
+        ----------
+        c: tuple[int], coordinate of a site within the unit cell
+        dts: dict, double tensors
+        '''
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][2], self._ctms[c][5], self._ctms[c][3]]
+        mpo = [self._ctms[c][6], dts[c], self._ctms[c][7]]
+
+        mpo_mps = [None]*3
+
+        mpo_mps[0] = torch.einsum('ab,cbde->adec', mps[0], mpo[0])
+        mpo_mps[1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', mps[1], mpo[1])
+        mpo_mps[2] = torch.einsum('ab,cbde->adec', mps[2], mpo[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        # cb = (c[0]-1) % self._nx, c[1]
+        cb = c
+        temp_mps = [self._ctms[cb][2], self._ctms[cb][5], self._ctms[c][5], self._ctms[c][3]]
+        temp_mpo = [self._ctms[cb][6], dts[cb], dts[c], self._ctms[c][7]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,cbde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,cbde->adec', temp_mps[3], temp_mpo[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        # cf = (c[0]+1) % self._nx, c[1]
+        cf = c
+        temp_mps = [self._ctms[c][2], self._ctms[c][5], self._ctms[cf][5], self._ctms[cf][3]]
+        temp_mpo = [self._ctms[c][6], dts[c], dts[cf], self._ctms[cf][7]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,cbde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgBb,AaBbCcDd->fAagCcDd', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,cbde->adec', temp_mps[3], temp_mpo[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # apply projectors and update CTM tensors
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,bcde->ae', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # a up-move means absorbing this row
+        # c_new = c[0], (c[1]-1) % self._ny
+        c_new = c
+        self._ctms[c_new][2] = mps[0] / norms[0]
+        self._ctms[c_new][5] = mps[1] / norms[1]
+        self._ctms[c_new][3] = mps[2] / norms[2]
+
+        return 1
+
+
+    def ctmrg_md_test(self, c: tuple, dts: dict):
+        r'''
+        one step of CTMRG for a site
+
+        Parameters:
+        ----------
+        c: tuple[int], coordinate of a site with the unit cell
+        dts: dict, double tensors
+        '''
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][0], self._ctms[c][4], self._ctms[c][1]]
+        mpo = [self._ctms[c][6], dts[c], self._ctms[c][7]]
+
+        mpo_mps = [None]*3
+        mpo_mps[0] = torch.einsum('ab,bcde->adec', mps[0], mpo[0])
+        mpo_mps[1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', mps[1], mpo[1])
+        mpo_mps[2] = torch.einsum('ab,bcde->adec', mps[2], mpo[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        # cb = (c[0]-1) % self._nx, c[1]
+        cb = c
+        temp_mps = [self._ctms[cb][0], self._ctms[cb][4], self._ctms[c][4], self._ctms[c][1]]
+        temp_mpo = [self._ctms[cb][6], dts[cb], dts[c], self._ctms[c][7]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,bcde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,bcde->adec', temp_mps[3], temp_mpo[3])
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        # cf = (c[0]+1) % self._nx, c[1]
+        cf = c
+        temp_mps = [self._ctms[c][0], self._ctms[c][4], self._ctms[cf][4], self._ctms[cf][1]]
+        temp_mpo = [self._ctms[c][6], dts[c], dts[cf], self._ctms[cf][7]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,bcde->adec', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('fgDd,AaBbCcDd->fAagCcBb', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,bcde->adec', temp_mps[3], temp_mpo[3])
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((3,), (0, 1, 2)), qr_dims=(0, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # apply projectors and update CTM tensors
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,bcde->ae', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # c_new = c[0], (c[1]+1) % self._ny
+        c_new = c
+        self._ctms[c_new][0] = mps[0] / norms[0]
+        self._ctms[c_new][4] = mps[1] / norms[1]
+        self._ctms[c_new][1] = mps[2] / norms[2]
+
+        return 1
+
+
+    def ctmrg_ml_test(self, c: tuple, dts: dict):
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][0], self._ctms[c][6], self._ctms[c][2]]
+        mpo = [self._ctms[c][4], dts[c], self._ctms[c][5]]
+
+        mpo_mps = [None]*3
+        mpo_mps[0] = torch.einsum('ab,acde->cbde', mps[0], mpo[0])
+        # f B b
+        # | | |--C 
+        # *****
+        # | | |--c
+        # e D d
+        mpo_mps[1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', mps[1], mpo[1])
+        mpo_mps[2] = torch.einsum('ab,acde->cbde', mps[2], mpo[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        # cb = c[0], (c[1]-1) % self._ny 
+        cb = c
+        temp_mps = [self._ctms[cb][0], self._ctms[cb][6], self._ctms[c][6], self._ctms[c][2]]
+        temp_mpo = [self._ctms[cb][4], dts[cb], dts[c], self._ctms[c][5]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,acde->cbde', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,acde->cbde', temp_mps[3], temp_mpo[3])
+        
+        # QR and LQ from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(0, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        # inverse of square root
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        # cf = c[0], (c[1]+1) % self._ny
+        cf = c
+        temp_mps = [self._ctms[c][0], self._ctms[c][6], self._ctms[cf][6], self._ctms[cf][2]]
+        temp_mpo = [self._ctms[c][4], dts[c], dts[cf], self._ctms[cf][5]]
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('ab,acde->cbde', temp_mps[0], temp_mpo[0])
+        temp_mpo_mps[1] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[1], temp_mpo[1])
+        temp_mpo_mps[2] = torch.einsum('efAa,AaBbCcDd->eDdfBbCc', temp_mps[2], temp_mpo[2])
+        temp_mpo_mps[3] = torch.einsum('ab,acde->cbde', temp_mps[3], temp_mpo[3])
+        
+        # QR and LQ from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(0, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,bcde->ae', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,ebcd->ea', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # a left-move means:
+        # c_new = (c[0]+1) % self._nx, c[1]
+        c_new = c
+        self._ctms[c_new][0] = mps[0] / norms[0]
+        self._ctms[c_new][6] = mps[1] / norms[1]
+        self._ctms[c_new][2] = mps[2] / norms[2]
+
+        return 1
+
+
+    def ctmrg_mr_test(self, c: tuple, dts: dict):
+
+        # build temporary MPS and MPO
+        mps = [self._ctms[c][1], self._ctms[c][7], self._ctms[c][3]]
+        mpo = [self._ctms[c][4], dts[c], self._ctms[c][5]]
+
+        mpo_mps = [None]*3
+        mpo_mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
+        mpo_mps[1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[1], mps[1])
+        mpo_mps[2] = torch.einsum('abcd,be->aecd', mpo[2], mps[2])
+
+        # build forward and backward projectors
+        ps = [None]*4
+        # backward one
+        # cb = c[0], (c[1]-1) % self._ny 
+        cb = c
+        temp_mps = [self._ctms[cb][1], self._ctms[cb][7], self._ctms[c][7], self._ctms[c][3]]
+        temp_mpo = [self._ctms[cb][4], dts[cb], dts[c], self._ctms[c][5]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('abcd,be->aecd', temp_mpo[0], temp_mps[0])
+        temp_mpo_mps[1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[1], temp_mps[1])
+        temp_mpo_mps[2] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[2], temp_mps[2])
+        temp_mpo_mps[3] = torch.einsum('abcd,be->aecd', temp_mpo[3], temp_mps[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        # truncate
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        ps[0] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[1] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        # forward one
+        # cf = c[0], (c[1]+1) % self._ny
+        cf = c
+        temp_mps = [self._ctms[c][1], self._ctms[c][7], self._ctms[cf][7], self._ctms[cf][3]]
+        temp_mpo = [self._ctms[c][4], dts[c], dts[cf], self._ctms[cf][5]]
+
+        temp_mpo_mps = [None]*4
+        temp_mpo_mps[0] = torch.einsum('abcd,be->aecd', temp_mpo[0], temp_mps[0])
+        temp_mpo_mps[1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[1], temp_mps[1])
+        temp_mpo_mps[2] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', temp_mpo[2], temp_mps[2])
+        temp_mpo_mps[3] = torch.einsum('abcd,be->aecd', temp_mpo[3], temp_mps[3])
+
+        # QR and LQ factorizations from both ends
+        temp = temp_mpo_mps[0]
+        q, r = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 0))
+        temp = torch.einsum('abcd,bcdefghi->aefghi', r, temp_mpo_mps[1])
+        q, r = tp.linalg.tqr(temp, group_dims=((0, 4, 5), (1, 2, 3)), qr_dims=(1, 0))
+
+        temp = temp_mpo_mps[-1]
+        q, l = tp.linalg.tqr(temp, group_dims=((0,), (1, 2, 3)), qr_dims=(1, 3))
+        temp = torch.einsum('abcdefgh,defi->abcigh', temp_mpo_mps[-2], l)
+        q, l = tp.linalg.tqr(temp, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+
+        ps[2] = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        ps[3] = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        mps = [None]*3
+        mps[0] = torch.einsum('abcd,bcde->ae', mpo_mps[0], ps[0])
+        mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', ps[1], mpo_mps[1], ps[2])
+        mps[2] = torch.einsum('abcd,ebcd->ea', ps[3], mpo_mps[2])
+
+        norms = [torch.linalg.norm(t) for t in mps]
+        # a right-move means:
+        # c_new = (c[0]-1) % self._nx, c[1]
+        c_new = c
+        self._ctms[c_new][1] = mps[0] / norms[0]
+        self._ctms[c_new][7] = mps[1] / norms[1]
+        self._ctms[c_new][3] = mps[2] / norms[2]
+
+        return 1
+
+
+
 if __name__ == '__main__':
     print('test')
 
@@ -1831,3 +2532,5 @@ if __name__ == '__main__':
 
     for x, y in zip(s_vals, test_svals):
         print(torch.linalg.norm(x-y))
+
+
