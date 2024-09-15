@@ -1576,92 +1576,6 @@ class SquareTPS(object):
         return 1
 
  
-    def ctm_onebody_measure(self, op: torch.tensor) -> list:
-
-        mts, mts_conj = {}, {}
-        for i, c in enumerate(self._coords):
-            mts.update({c: tps[i].clone()})
-            mts_conj.update({c: tps[i].conj().clone()})
-        # double tensors
-        dts = {}
-        for i, c in enumerate(self._coords):
-            dts.update({c: torch.einsum('ABCDe,abcde->AaBbCcDd', mts_conj[c], mts[c])})
-
-        meas = []
-
-        for j in range(self._ny):
-            # prepare up and down MPS
-            mps_u = [t.clone() for t in up_es]
-            mps_u.insert(0, cs[2])
-            mps_u.append(cs[3])
-
-            mps_d = [t.clone() for t in down_es]
-            mps_d.insert(0, cs[0])
-            mps_d.append(cs[1])
-
-            # renormalize up MPS until row-j
-            # l = ..., j+1
-            for l in range(self._ny-1, j, -1):
-                # temporary MPO
-                mpo = []
-                for i in range(self._nx):
-                    mpo.append(dts[(i, l)])
-
-                mpo.insert(0, left_es[l])
-                mpo.append(right_es[l])
-
-                mps_u = self.ctmrg_move_up(mps_u, mpo)
-
-            # renormalize down MPS until row-j
-            # l = 0, ..., j-1
-            for l in range(j):
-                mpo = []
-                for i in range(self._nx):
-                    mpo.append(dts[(i, l)])
-
-                mpo.insert(0, left_es[l])
-                mpo.append(right_es[l])
-
-                mps_d = self.ctmrg_move_down(mps_d, mpo)
-
-            # build left and right environment tensors
-            # *--f,3
-            # *--d,1
-            # *--e,2
-            # *--a,0
-            left_env = torch.einsum('ab,bcde,fc->adef', mps_d[0], left_es[j], mps_u[0])
-            right_env = torch.einsum('ab,bcde,fc->adef', mps_d[-1], right_es[j], mps_u[-1])
-
-            # pure double tensors
-            pure_dts = []
-            for i in range(self._nx):
-                pure_dts.append(dts[(i, j)])
-
-            # denominator
-            temp = left_env.clone()
-            for i in range(self._nx):
-                temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[i+1], pure_dts[i], mps_u[i+1])
-
-            den = torch.einsum('abcd,abcd', temp, right_env)
-
-            # impure double tensor
-            for i in range(self._nx):
-                impure_dt = torch.einsum('ABCDE,Ee,abcde->AaBbCcDd', mts_conj[(i, j)], op, mts[(i, j)])
-
-                # numerator
-                temp = left_env.clone()
-                for k in range(self._nx):
-                    if i == k:
-                        temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[k+1], impure_dt, mps_u[k+1])
-                    else:
-                        temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, mps_d[k+1], pure_dts[k], mps_u[k+1])
-
-                num = torch.einsum('abcd,abcd', temp, right_env)
-                meas.append((num / den))
-
-        return torch.tensor(meas)
-
-
     def ctm_twobody_measure(self, op: torch.tensor) -> list:
         r'''
         measure a twobody operator by CTMRG 
@@ -1673,7 +1587,7 @@ class SquareTPS(object):
 
         # SVD two-body operator to MPO
         u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(0, 0))
-        ss = torch.sqrt(s).diag()
+        ss = torch.sqrt(s).diag().to(self._dtype)
         us = torch.einsum('Aa,abc->Abc', ss, u)
         sv = torch.einsum('Aa,abc->Abc', ss, v)
 
@@ -1741,35 +1655,47 @@ class SquareTPS(object):
         return torch.tensor(meas)
 
 
-    def ctm_onebody_measure(self, c, op: torch.tensor):
+    def ctm_onebody_norm(self, c: tuple, dts: dict):
+
+        env_l = torch.einsum('ab,bcde,fc->adef', self._ctms[c][0], self._ctms[c][6], self._ctms[c][2])
+        env_r = torch.einsum('ab,bcde,fc->adef', self._ctms[c][1], self._ctms[c][7], self._ctms[c][3])
+
+        temp = env_l.clone()
+        temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, self._ctms[c][4], dts[c], self._ctms[c][5])
+
+        return torch.einsum('abcd,abcd', temp, env_r)
+
+
+    def ctm_onebody_measure(self, op: torch.tensor):
 
         mts, mts_conj = {}, {}
-        for c in self._coords:
-            t = self.merged_tensor(c)
-            mts.update({c: t})
-            mts_conj.update({c: t.conj()})
+        for temp_c in self._coords:
+            t = self.merged_tensor(temp_c)
+            mts.update({temp_c: t})
+            mts_conj.update({temp_c: t.conj()})
 
         # double tensors
         dts = self.double_tensors()
 
         # for c in self._coords:
 
+        c = (0, 0)
+
         # contraction
         env_l = torch.einsum('ab,bcde,fc->adef', self._ctms[c][0], self._ctms[c][6], self._ctms[c][2])
-        env_r = torch.einsum('ab,bcde,fc->adef', self._ctms[cx][1], self._ctms[cx][7], self._ctms[cx][3])
+        env_r = torch.einsum('ab,bcde,fc->adef', self._ctms[c][1], self._ctms[c][7], self._ctms[c][3])
 
         temp = env_l.clone()
         temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, self._ctms[c][4], dts[c], self._ctms[c][5])
         den = torch.einsum('abcd,abcd', temp, env_r)
 
-        impure_dt = torch.einsum('ABCDE,fEe,abcde->AaBbCfcDd', mts_conj[c], op, mts[c])
+        impure_dt = torch.einsum('ABCDE,Ee,abcde->AaBbCcDd', mts_conj[c], op, mts[c])
         temp = env_l.clone()
         temp = torch.einsum('eAag,efDd,AaBbCcDd,ghBb->fCch', temp, self._ctms[c][4], impure_dt, self._ctms[c][5])
-        den = torch.einsum('abcd,abcd', temp, env_r)
+        num = torch.einsum('abcd,abcd', temp, env_r)
 
-        print(den, num)
+        return (num / den)
 
-        return (den / num)
 
 ####### below are temporary test functions ########
 
