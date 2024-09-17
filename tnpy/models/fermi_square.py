@@ -1019,3 +1019,446 @@ class SquareTJ1J2(object):
             time_evo = time_evo+(1.0/math.factorial(i))*((-delta)**i)*op_powers[i]
 
         return time_evo
+
+
+class SquareSigmaTJ(object):
+    r'''
+    sigma-t-J model on a square lattice
+    '''
+
+    def __init__(self, t: float, J: float, mu: float):
+        r'''
+        '''
+
+        self._dim_phys = 2
+        self._t, self._J, self._mu = t, J, mu
+
+    def onsite_n(self) -> GTensor:
+        r'''
+        onsite particle-number operator
+        '''
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*2)
+        temp = torch.zeros(block_shape)
+        temp[0, 0] = 1.0
+        temp[1, 1] = 1.0
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return GTensor(dual, shape, blocks)
+
+    def onsite_sz(self) -> GTensor:
+        r'''
+        onsite Sz operator
+        '''
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*2)
+        temp = torch.zeros(block_shape)
+        temp[0, 0] = 0.5
+        temp[1, 1] = -0.5
+        
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return GTensor(dual, shape, blocks)
+
+    def onsite_sx(self) -> GTensor:
+        r'''
+        onsite Sx operator
+        '''
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*2)
+        temp = torch.zeros(block_shape)
+        temp[1, 0] = 0.5
+        temp[0, 1] = 0.5
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return GTensor(dual, shape, blocks)
+
+    def onsite_sy(self) -> GTensor:
+        r'''
+        onsite Sx operator
+        '''
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*2)
+        temp = torch.zeros(block_shape)
+        temp[1, 0] = 0.5
+        temp[0, 1] = -0.5
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return GTensor(dual, shape, blocks)
+
+    def c_up(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[0, 0] = 1.0
+
+        qns = [0, 1]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def c_up_dagger(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[0, 0] = 1.0
+
+        qns = [1, 0]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def c_down(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[0, 1] = 1.0
+
+        qns = [0, 1]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def c_down_dagger(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[1, 0] = 1.0
+
+        qns = [1, 0]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def c_down_dagger_c_up(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[1, 0] = 1.0
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def c_up_dagger_c_down(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[0, 1] = 1.0
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def n_up(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[0, 0] = 1.0
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def n_down(self) -> Z2gTensor:
+
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        blocks = {}
+        temp = torch.zeros(tuple([self._dim_phys]*2))
+        temp[1, 1] = 1.0
+
+        qns = [1, 1]
+        blocks[tuple(qns)] = temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def onebody_id(self) -> Z2gTensor:
+        r'''
+        identity closure condition
+        '''
+
+        # build the identity operator
+        dual = (0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*2)
+        block_shape = tuple([self._dim_phys]*2)
+
+        temp = torch.zeros(block_shape)
+        bare = torch.zeros(block_shape)
+        blocks = {}
+
+        id_states = (0, 0), (0, 1), (1, 1)
+
+        for l, n in id_states:
+            temp.zero_()
+            temp[l, l] = 1.0
+            blocks[(n, n)] = blocks.get((n, n), bare)+temp
+
+        return Z2gTensor(dual, shape, blocks)
+
+    def twobody_hopping_mu(self) -> GTensor:
+        r'''
+        # H_{i'j'ij}^{n_{i'}n_{j'}n_{i}n_{j}}
+        #   i'   j'
+        #   |0   |0
+        #   ^    ^
+        #   |    |
+        #   *----*
+        #   |    |
+        #   ^    ^
+        #   |1   |1
+        #   i    j
+        '''
+
+        # in the first place
+        # build H_{i'ij'j}^{n_{i'}n_{i}n_{j'}n_{j}}
+        # pay attention to the natural tensor product order
+        dual = (0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*4)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*4)
+
+        bare = torch.zeros(block_shape)
+        temp = torch.zeros(block_shape)
+
+        # hopping t-terms
+        temp[0, 0, 0, 0] = 1.0 
+        temp[1, 0, 0, 1] = 1.0
+        qns = [1, 0, 0, 1]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+        # complex conjugate
+        temp.zero_()
+        temp[0, 0, 0, 0] = -1.0
+        temp[0, 1, 1, 0] = -1.0
+        qns = [0, 1, 1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+
+        # chemical potential
+        # there is a minus sign by default
+        temp.zero_()
+        temp[0, 0, 0, 0] = 0.25
+        temp[1, 1, 0, 0] = 0.25
+        blocks[(1, 1, 0, 0)] = blocks.get((1, 1, 0, 0), bare)+(-1.0*self._mu*temp)
+        temp.zero_()
+        temp[0, 0, 0, 0] = 0.25
+        temp[1, 1, 0, 0] = 0.25
+        temp[0, 0, 1, 1] = 0.25
+        temp[1, 1, 1, 1] = 0.25
+        blocks[(1, 1, 1, 1)] = blocks.get((1, 1, 1, 1), bare)+(-1.0*self._mu*temp)
+
+        temp.zero_()
+        temp[0, 0, 0, 0] = 0.25
+        temp[0, 0, 1, 1] = 0.25
+        blocks[(0, 0, 1, 1)] = blocks.get((0, 0, 1, 1), bare)+(-1.0*self._mu*temp)
+        temp.zero_()
+        temp[0, 0, 0, 0] = 0.25
+        temp[1, 1, 0, 0] = 0.25
+        temp[0, 0, 1, 1] = 0.25
+        temp[1, 1, 1, 1] = 0.25
+        blocks[(1, 1, 1, 1)] = blocks.get((1, 1, 1, 1), bare)+(-1.0*self._mu*temp)
+
+        # then permute to H_{i'j'ij}^{n_{i'}n_{j'}n_{i}n_{j}}
+        return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
+
+    def twobody_cc(self) -> GTensor:
+
+        # in the first place
+        # build H_{i'ij'j}^{n_{i'}n_{i}n_{j'}n_{j}}
+        # pay attention to the natural tensor product order
+        dual = (0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*4)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*4)
+
+        bare = torch.zeros(block_shape)
+        temp = torch.zeros(block_shape)
+
+        # hopping t-terms
+        temp.zero_()
+        temp[0, 0, 0, 0] = 1.0
+        # temp[1, 0, 0, 1] = 1.0
+        blocks[(1, 0, 0, 1)] = blocks.get((1, 0, 0, 1), bare)+temp
+        # complex conjugate
+        temp.zero_()
+        # temp[0, 0, 0, 0] = -1.0
+        # temp[0, 1, 1, 0] = -1.0
+        blocks[(0, 1, 1, 0)] = blocks.get((0, 1, 1, 0), bare)+temp
+
+        # then permute to H_{i'j'ij}^{n_{i'}n_{j'}n_{i}n_{j}}
+        return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
+
+    def twobody_hopping(self) -> GTensor:
+
+        dual = (0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*4)
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*4)
+
+        bare = torch.zeros(block_shape)
+        temp = torch.zeros(block_shape)
+
+        # hopping t-terms
+        temp[0, 0, 0, 0] = 1.0 
+        temp[1, 0, 0, 1] = 1.0
+        qns = [1, 0, 0, 1]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+        # complex conjugate
+        temp.zero_()
+        temp[0, 0, 0, 0] = -1.0
+        temp[0, 1, 1, 0] = -1.0
+        qns = [0, 1, 1, 0]
+        if self._schwinger_boson:
+            qns = [q ^ 1 for q in qns]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+
+        return GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
+
+
+    def twobody_ham(self, cflag=False) -> GTensor:
+        r'''
+        build the Hamiltonian as a GTensor by listing all possible quantum channels
+
+        # H_{i'j'ij}^{n_{i'}n_{j'}n_{i}n_{j}}
+        #   i'   j'
+        #   |0   |0
+        #   ^    ^
+        #   |    |
+        #   *----*
+        #   |    |
+        #   ^    ^
+        #   |1   |1
+        #   i    j
+        '''
+
+        # in the first place
+        # build H_{i'ij'j}^{n_{i'}n_{i}n_{j'}n_{j}}
+        # pay attention to the natural tensor product order
+        dual = (0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*4)
+
+        blocks = {}
+        block_shape = tuple([self._dim_phys]*4)
+        bare = torch.zeros(block_shape)
+        temp = torch.zeros(block_shape)
+        # hopping t-terms
+        # sigma tJ
+        temp[0, 0, 0, 0] = 1.0 
+        temp[1, 0, 0, 1] = -1.0
+        qns = [1, 0, 0, 1]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+        # complex conjugate
+        temp.zero_()
+        temp[0, 0, 0, 0] = -1.0
+        temp[0, 1, 1, 0] = 1.0
+        qns = [0, 1, 1, 0]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._t*temp)
+
+        # Heisenberg J-terms
+        temp.zero_()
+        # off-diagonal
+        temp[1, 0, 0, 1] = 0.5
+        temp[0, 1, 1, 0] = 0.5
+        # diagonal
+        temp[1, 1, 0, 0] = -0.5
+        temp[0, 0, 1, 1] = -0.5
+        qns = [1, 1, 1, 1]
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(self._J*temp)
+
+        # chemical potential
+        # there is a minus sign by default
+        # double occupied state should be projected out: | e_{k}^{n} >, k=1, n=0
+        id_states = (0, 0), (0, 1), (1, 1)
+        # n_{i} \otimes 1
+        for k, n in id_states:
+            temp.zero_()
+            temp[0, 0, k, k] = 0.25
+            temp[1, 1, k, k] = 0.25
+            qns = [1, 1, n, n]
+            blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._mu*temp)
+        # 1 \otimes n_{j}
+        for k, n in id_states:
+            temp.zero_()
+            temp[k, k, 0, 0] = 0.25
+            temp[k, k, 1, 1] = 0.25
+            qns = [n, n, 1, 1]
+            blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(-1.0*self._mu*temp)
+
+        return GTensor(dual, shape, blocks, cflag).permute((0, 2, 1, 3))
+
+    def twobody_time_evo(self, op: GTensor, delta: float, order: int) -> GTensor:
+        r'''
+        time evolution by Talyor expansion
+
+        Parameters
+        ----------
+        delta: float, time evolution step size
+        order: int, how many Taylor orders you want
+        '''
+
+        # build the identity operator
+        dual = (0, 1, 0, 1)
+        shape = tuple([(self._dim_phys, self._dim_phys)]*4)
+
+        block_shape = tuple([self._dim_phys]*4)
+        temp = torch.zeros(block_shape)
+        bare = torch.zeros(block_shape)
+        blocks = {}
+        id_states = (0, 0), (0, 1), (1, 1)
+        # k, m: the first
+        # l, n: the second
+        for k, m in id_states:
+            for l, n in id_states:
+                temp.zero_()
+                temp[k, k, l, l] = 1.0
+                qns = [m, m, n, n]
+                blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+temp
+
+        id_gt = GTensor(dual, shape, blocks).permute((0, 2, 1, 3))
+        # powers of operators
+        op_powers = [id_gt, op]
+        for i in range(2, order):
+            op_powers.append(tp.gcontract('abcd,cdef->abef', op, op_powers[i-1]))
+        # taylor expansion
+        time_evo = op_powers[0]
+        for i in range(1, order):
+            time_evo = time_evo+(1.0/math.factorial(i))*((-delta)**i)*op_powers[i]
+
+        return time_evo
