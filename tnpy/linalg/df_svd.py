@@ -66,10 +66,10 @@ class diff_svd(torch.autograd.Function):
 
         # u, s, v = torch.linalg.svd(a, full_matrices=False)
         try:
-            u, s, v = torch.linalg.svd(mat, full_matrices=False)
+            u, s, v = torch.linalg.svd(a, full_matrices=False)
 
         except torch._C._LinAlgError:
-            u, s, v = scipy.linalg.svd(mat, full_matrices=False, overwrite_a=True, check_finite=False, lapack_driver='gesvd')
+            u, s, v = scipy.linalg.svd(a, full_matrices=False, overwrite_a=True, check_finite=False, lapack_driver='gesvd')
             u, s, v = torch.tensor(u), torch.tensor(s), torch.tensor(v)
 
         ctx.save_for_backward(u, s, v)
