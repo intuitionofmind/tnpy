@@ -171,8 +171,8 @@ def gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=None):
     mat_o = temp_gt.parity_mat(mat_qns_o, split_dims, parity=1)
 
     # SVD in these two sectors, respectively
-    ue, se, ve = torch.linalg.svd(mat_e, full_matrices=False)
-    uo, so, vo = torch.linalg.svd(mat_o, full_matrices=False)
+    ue, se, ve = svd(mat_e)
+    uo, so, vo = svd(mat_o)
 
     # new duals for U -<- S -<- V
     dual_u, dual_s, dual_v = temp_gt.dual[:split]+(1,), (0, 1), (0,)+temp_gt.dual[split:]
@@ -268,8 +268,8 @@ def super_gtsvd(input_gt: GTensor, group_dims: tuple, svd_dims=None, cut_off=Non
     mat_o = temp_gt.parity_mat(mat_qns_o, split_dims, parity=1)
 
     # SVD in these two sectors, respectively
-    ue, se, ve = svd(mat_e, full_matrices=False)
-    uo, so, vo = svd(mat_o, full_matrices=False)
+    ue, se, ve = svd(mat_e)
+    uo, so, vo = svd(mat_o)
 
     # new duals for U ->- S ->- V
     dual_u, dual_s, dual_v = temp_gt.dual[:split]+(0,), (1, 0), (1,)+temp_gt.dual[split:]
