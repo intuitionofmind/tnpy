@@ -1,5 +1,4 @@
-from copy import deepcopy
-import itertools
+from copy import deepcopy import itertools
 import math
 import numpy as np
 import scipy
@@ -14,48 +13,30 @@ torch.set_printoptions(precision=5)
 
 import tnpy as tp
 
-class SquareTPS(object):
+class SquareCTMRG(object):
     r'''
-    class of bosonic tensor product states on a square lattice
-    the unit cell size at least: nx=2, ny=1
+    class of CTMRG method on a square lattice
     '''
-
-    def __init__(self, site_tensors: dict, link_tensors: dict, dim_phys=2, ctms=None, dtype=torch.float64):
-        r'''initialization
+    def __init__(
+            self,
+            dts: dict,
+            ctms=None,
+            dtype=torch.float64):
+        r''' class initialization
 
         Parameters
         ----------
-        site_tensors: dict, {key: coordinate, value: tensor}
-        link_tensors: dict, {key: coordinate, value: tensor}
-        ctms: dict, {key: coordinate, value: list}, environment tensors for CTMRG
-            for the value list: [C0, C1, C2, C3, Ed, Eu, El, Er]
+        dts: dict, double tensors
 
-        # rank-5 site-tensor
-        # the index order convention
-        # clockwisely, starting from the WEST:
-        #       1 4
-        #       |/
-        # T: 0--*--2
-        #       |
-        #       3
-
-        # diagonal bond matrix living on the link appproximates the environment
-        # the number of bond matrices is 2*self._uc_size
-        # order conventions for site-tensors & bond-matrices as below:
-        #   |5  |7  |5  |7
-        #  -C-4-D-6-C-4-D-6
-        #   |1  |3  |1  |3
-        #  -A-0-B-2-A-0-B-2
-        #   |5  |7  |5  |7
-        #  -C-4-D-6-C-4-D-6
-        #   |1  |3  |1  |3
-        #  -A-0-B-2-A-0-B-2
-        #   |   |   |   |
-
-        # CTM tensors
-        # each site is associated with a set of eight CTM tensors
-        # order: {C0, C1, C2, C3, Ed, Eu, El, Er}
-        #
+        # double tensor:
+        #       2 3
+        #       | |
+        #    0--***--4
+        #    1--***--5
+        #       | |
+        #       6 7
+        # CTM tensors:
+        # ctm_names: {C0, C1, C2, C3, Ed, Eu, El, Er}
         #  C2  Eu  C3
         #   *--*--*
         #   |  |  |
@@ -63,44 +44,45 @@ class SquareTPS(object):
         #   |  |  |
         #   *--*--*
         #  C0  Ed  C1
+
+        that is, each site is place on NINE tensors: 1 double tensor + 8 CTM tensors
         '''
-
-        # defalut for spin-1/2
-        self._dim_phys = dim_phys
-
         self._dtype = dtype
-
         # sorted by the key/coordinate (x, y), firstly by y, then by x
-        self._site_tensors = dict(sorted(site_tensors.items(), key=lambda x: (x[0][1], x[0][0])))
-        self._link_tensors = dict(sorted(link_tensors.items(), key=lambda x: (x[0][1], x[0][0])))
-
-        self._coords = tuple(self._site_tensors.keys())
+        self._dts = dict(sorted(dts.items(), key=lambda x: (x[0][1], x[0][0])))
+        self._coords = tuple(self._dts.keys())
         self._size = len(self._coords)
-
         # sites along two directions
         xs = [c[0] for c in self._coords]
         ys = [c[1] for c in self._coords]
-
         # remove duplicated items
         xs = list(dict.fromkeys(xs))
         ys = list(dict.fromkeys(ys))
         self._nx, self._ny = len(xs), len(ys)
-
-        assert self._nx > 1 and self._ny > 0, 'the TPS unit cell should be at least: 2*1'
-
         # inner bond dimension
         self._chi = self._site_tensors[(0, 0)].shape[0]
 
+        # for CTMRG 
+        self._ctm_names = 'C0', 'C1', 'C2', 'C4', 'Ed', 'Eu', 'El', 'Er'
         self._ctms = ctms
-
         if self._ctms is not None:
-            self._rho = self._ctms[(0, 0)]['C0'].shape[0]
+            for k, v in self._ctms[(0, 0)].items():
+                if k not in self._ctm_names:
+                    raise ValueError('Input CTM names are not valid')
+                else:
+                    self._rho = self._ctms[(0, 0)]['C0'].shape[0]
         else:
             self._rho = 0
 
 
     @classmethod
-    def rand(cls, nx: int, ny: int, chi: int, rho: int, dtype=torch.float64):
+    def rand(
+            cls,
+            nx: int,
+            ny: int,
+            chi: int,
+            rho: int,
+            dtype=torch.float64):
         r'''
         generate a random SquareTPS
 
@@ -108,76 +90,25 @@ class SquareTPS(object):
         ----------
         nx: int, number of sites along x-direction in a unit cell
         ny: int, number of sites along y-direction in a unit cell
-        chi: int, bond dimension of the site tensor
+        chi: int, bond dimension of double tensor
         rho: int, bond dimension of boundary CTM tensors
         '''
-
-        site_shape = (chi, chi, chi, chi, 2)
-        site_tensors, link_tensors = {}, {}
-
+        t_shape = tuple([chi]*8)
         for i, j in itertools.product(range(nx), range(ny)):
-            temp = torch.rand(site_shape).to(dtype)
-            lam_x = torch.rand(chi).diag().to(dtype)
-            lam_y = torch.rand(chi).diag().to(dtype)
-
-            # normalization
-            site_tensors[(i, j)] = temp / torch.linalg.norm(temp)
-            link_tensors[(i, j)] = [lam_x / torch.linalg.norm(lam_x), lam_y / torch.linalg.norm(lam_y)]
-
+            temp = torch.rand(t_shape).to(dtype)
         if rho > 0:
-            names = 'C0', 'C1', 'C2', 'C4', 'El', 'Er', 'Eu', 'Ed' 
-            # corners
-            cs = [torch.rand(rho, rho).to(dtype) for i in range(4)]
-            # edges
-            es = [torch.rand(rho, rho, chi, chi).to(dtype) for i in range(4)]
-            ctm = cs+es
+            ctm_names = 'C0', 'C1', 'C2', 'C4', 'Ed', 'Eu', 'El', 'Er'
+            ctm = {}
+            for i, n in enumerate(ctm_names):
+                if i < 4:
+                # corners
+                    ctm.update({n: torch.rand(rho, rho).to(dtype)})
+                else:
+                # edges
+                    ctm.update({n: torch.rand(rho, rho, chi, chi).to(dtype)})
             ctms = {}
             for i, j in itertools.product(range(nx), range(ny)):
-                temp = [t.clone() for t in ctm]
-                ctms.update({(i, j): temp})
-
-        else:
-            ctms = None
-
-        return cls(site_tensors=site_tensors, link_tensors=link_tensors, ctms=ctms, dtype=dtype)
-
-
-    @classmethod
-    def randn(cls, nx: int, ny: int, chi: int, rho: int, dtype=torch.float64):
-        r'''
-        generate a random SquareTPS
-
-        Parameters
-        ----------
-        nx: int, number of sites along x-direction in a unit cell
-        ny: int, number of sites along y-direction in a unit cell
-        chi: int, bond dimension of the site tensor
-        rho: int, bond dimension of boundary CTM tensors
-        '''
-
-        site_shape = (chi, chi, chi, chi, 2)
-        site_tensors, link_tensors = {}, {}
-
-        for i, j in itertools.product(range(nx), range(ny)):
-            temp = torch.randn(site_shape).to(dtype)
-            lam_x = torch.randn(chi).diag().to(dtype)
-            lam_y = torch.randn(chi).diag().to(dtype)
-
-            # normalization
-            site_tensors[(i, j)] = temp / torch.linalg.norm(temp)
-            link_tensors[(i, j)] = [lam_x / torch.linalg.norm(lam_x), lam_y / torch.linalg.norm(lam_y)]
-
-        if rho > 0:
-            # corners
-            cs = [torch.randn(rho, rho).to(dtype) for i in range(4)]
-            # edges
-            es = [torch.randn(rho, rho, chi, chi).to(dtype) for i in range(4)]
-            ctm = cs+es
-            ctms = {}
-            for i, j in itertools.product(range(nx), range(ny)):
-                temp = [t.clone() for t in ctm]
-                ctms.update({(i, j): temp})
-
+                ctms.update({(i, j): ctm})
         else:
             ctms = None
 
@@ -186,146 +117,35 @@ class SquareTPS(object):
 
     @property
     def coords(self):
-
         return self._coords
 
 
     @property
     def size(self):
-
         return self._size
 
 
     @property
     def nx(self):
-
         return self._nx
 
 
     @property
     def ny(self):
-
         return self._ny
 
 
     @property
     def bond_dim(self):
-
         return self._chi
 
 
-    def site_tensors(self):
+    def double_tensors(self):
+        return deepcopy(self._dts)
 
-        return deepcopy(self._site_tensors)
-
-
-    def link_tensors(self):
-
-        return deepcopy(self._link_tensors)
-
-
-    def site_envs(self, site: tuple, inner_bonds=()) -> list:
-        r'''
-        return the environment bond weights around a site as a list
-
-        Parameters
-        ----------
-        site: tuple, coordinate
-        inner_bonds: tuple, optional, the inner bonds will be returned by square root of tensors
-
-        Returns
-        -------
-        envs: tuple[tensor]
-        '''
-
-        envs = []
-        envs.append(self._link_tensors[((site[0]-1) % self._nx, site[1])][0])
-        envs.append(self._link_tensors[site][1])
-        envs.append(self._link_tensors[site][0])
-        envs.append(self._link_tensors[(site[0], (site[1]-1) % self._ny)][1])
-
-        for j in inner_bonds:
-            envs[j] = torch.sqrt(envs[j])
-
-        return envs
-
-
-    def absorb_envs(self, t, envs):
-
-        r'''
-        # find the optimal path
-        path_info = oe.contract_path('abcde,Aa,bB,cC,Dd->ABCDe', t, *envs, optimize='optimal')
-        print(path_info)
-        
-        --------------------------------------------------------------------------------
-        scaling        BLAS                current                             remaining
-        --------------------------------------------------------------------------------
-        6           GEMM        Aa,abcde->Abcde                 bB,cC,Dd,Abcde->ABCDe
-        6           TDOT        Abcde,bB->AcdeB                    cC,Dd,AcdeB->ABCDe
-        6           TDOT        AcdeB,cC->AdeBC                       Dd,AdeBC->ABCDe
-        6           TDOT        AdeBC,Dd->ABCDe                          ABCDe->ABCDe)
-        '''
-
-        temp = torch.einsum('Aa,abcde->Abcde', envs[0], t)
-        temp = torch.einsum('abcde,bB->aBcde', temp, envs[1])
-        temp = torch.einsum('abcde,cC->abCde', temp, envs[2])
-
-        return torch.einsum('Dd,abcde->abcDe', envs[3], temp)
-
-    def merged_tensor(self, site):
-        r'''
-        return site tensor merged with square root of link tensors around
-
-        Parameters
-        ----------
-        site: tuple[int], coordinate
-        '''
-
-        envs = self.site_envs(site, inner_bonds=(0, 1, 2, 3))
-
-        return self.absorb_envs(self._site_tensors[site], envs)
-
-
-    def double_tensor(self, c: tuple):
-        r'''
-        return a double tensors
-
-        Parameters:
-        ----------
-        '''
-
-        temp = self.merged_tensor(c)
-
-        return torch.einsum('ABCDe,abcde->AaBbCcDd', temp.conj(), temp)
-
-
-    def double_tensors(self) -> dict:
-        r'''
-        return double tensors as a dict
-        '''
-
-        dts = {}
-        for c in self._coords:
-            dts.update({c: self.double_tensor(c)})
-
-        return dts
-
-
-    def unified_tensor(self, requires_grad=False) -> torch.tensor:
-        r'''
-        return the TPS tensor in a unit cell as a whole tensor
-        new dimension is created as dim=0
-        '''
-
-        tens = []
-        for c in self._coords:
-            tens.append(self.merged_tensor(c))
-
-        return torch.stack(tens, dim=0).requires_grad_(requires_grad)
-
-
-    def update_ctms(self, new_ctms):
-
+    def update_ctms(self,
+                    new_ctms: dict):
+        for 
         self._ctms = new_ctms
 
         if self._ctms is not None:

@@ -13,7 +13,7 @@ class SquareXYZ(object):
     class of XYZ spin model on a square lattice
     '''
 
-    def __init__(self, Jx: float, Jy: float, Jz: float, cflag=False):
+    def __init__(self, Jx: float, Jy: float, Jz: float, dtype=torch.float64):
         r'''initialization
 
         Parmaeters
@@ -23,16 +23,16 @@ class SquareXYZ(object):
 
         self._dim_phys = 2
         self._Jx, self._Jy, self._Jz = Jx, Jy, Jz
-        self._cflag = cflag
+        self._dtype = dtype
 
         # identity and spin operators
         self._id = torch.tensor([
             [1.0, 0.0],
-            [0.0, 1.0]])
+            [0.0, 1.0]]).to(dtype)
 
         self._sx = 0.5*torch.tensor([
             [0.0, 1.0],
-            [1.0, 0.0]])
+            [1.0, 0.0]]).to(dtype)
 
         self._sy = 0.5*torch.tensor([
             [0.0, -1.j],
@@ -40,15 +40,20 @@ class SquareXYZ(object):
 
         self._sz = 0.5*torch.tensor([
             [1.0, 0.0],
-            [0.0, -1.0]])
+            [0.0, -1.0]]).to(dtype)
 
         self._sp = torch.tensor([
             [0.0, 1.0],
-            [0.0, 0.0]])
+            [0.0, 0.0]]).to(dtype)
 
         self._sm = torch.tensor([
             [0.0, 0.0],
-            [1.0, 0.0]])
+            [1.0, 0.0]]).to(dtype)
+
+    @property
+    def dtype(self):
+
+        return self._dtype
 
     @property
     def sx(self):
@@ -90,7 +95,7 @@ class SquareXYZ(object):
         '''
 
         ham_shape = [self._dim_phys]*4
-        ham = torch.zeros(ham_shape)
+        ham = torch.zeros(ham_shape).to(self._dtype)
 
         # Kron product is the matrix representation of tensor product
         # 0   2
@@ -116,10 +121,7 @@ class SquareXYZ(object):
         print('test Ham:', torch.linalg.norm(test_ham-ham.cdouble()))
         '''
 
-        if self._cflag:
-            return ham.cdouble()
-        else:
-            return ham
+        return ham
 
     def twobody_img_time_evo(self, delta: float):
         r'''

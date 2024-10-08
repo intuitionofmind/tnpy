@@ -3,7 +3,11 @@ import torch
 torch.set_default_dtype(torch.float64)
 import scipy
 
-def svd(mat, full_matrices=None):
+from .df_svd import SVD, diff_svd
+
+svd = diff_svd.apply
+
+def _svd(mat, full_matrices=False):
     r'''
     robust SVD
     also refer to: https://tenpy.github.io/reference/tenpy.linalg.svd_robust.html
@@ -15,6 +19,7 @@ def svd(mat, full_matrices=None):
 
     try:
         u, s, v = torch.linalg.svd(mat, full_matrices=flag)
+
     except torch._C._LinAlgError:
         u, s, v = scipy.linalg.svd(mat, full_matrices=flag, overwrite_a=True, check_finite=False, lapack_driver='gesvd')
         u, s, v = torch.tensor(u), torch.tensor(s), torch.tensor(v)

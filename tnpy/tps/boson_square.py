@@ -525,13 +525,16 @@ class SquareTPS(object):
         return torch.as_tensor(res)
 
 
-class SquareCTMRG(object):
-    r'''
-    class of CTMRG method on a square lattice with double tensors
-    '''
+class ClassicalSquareCTMRG(object):
+    r'''class of CTMRG on a square lattice for a classcial model'''
+    pass
+
+
+class QuantumSquareCTMRG(object):
+    r'''class of CTMRG method on a square lattice for a quantum wavefunction'''
     def __init__(
             self,
-            dts: dict,
+            wfs: dict,
             rho: int,
             ctms=None,
             dtype=torch.float64):
@@ -649,19 +652,25 @@ class SquareCTMRG(object):
             self,
             wf: torch.tensor,
             op: torch.tensor):
-        r'''measure onebody operator'''
+        r'''measure onebody operator
+
+        Parameters:
+        ----------
+        wf: torch.tensor, wavefunction as a unified tensor
+        op: torch.tensor, operator to be measured
+        '''
         res = []
         for i, c in enumerate(self._coords):
             # left and right environments
             env_l = torch.einsum(
                     'ab,bcde,fc->adef',
                     self._ctms[((c[0]-1) % self._nx, (c[1]-1) % self._ny)]['C0'],
-                    self._ctms[((c[0]-1) % self._nx, (c[1]+0) % self._ny)]['El'],
+                    self._ctms[((c[0]-1) % self._nx, c[1])]['El'],
                     self._ctms[((c[0]-1) % self._nx, (c[1]+1) % self._ny)]['C2'])
             env_r = torch.einsum(
                     'ab,bcde,fc->adef',
                     self._ctms[((c[0]+1) % self._nx, (c[1]-1) % self._ny)]['C1'],
-                    self._ctms[((c[0]+1) % self._nx, (c[1]+0) % self._ny)]['Er'],
+                    self._ctms[((c[0]+1) % self._nx, c[1])]['Er'],
                     self._ctms[((c[0]+1) % self._nx, (c[1]+1) % self._ny)]['C3'])
             # denominator
             temp = env_l.clone()
@@ -685,3 +694,6 @@ class SquareCTMRG(object):
             res.append(num / den)
 
         return torch.as_tensor(res)
+
+    def measure_twobody(self):
+        pass
