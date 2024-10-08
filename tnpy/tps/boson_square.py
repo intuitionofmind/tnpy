@@ -204,7 +204,7 @@ class SquareTPS(object):
         return self.absorb_envs(self._site_tensors[site], envs)
 
 
-    def double_tensor(
+    def pure_double_tensor(
             self,
             c: tuple):
         r'''
@@ -213,7 +213,6 @@ class SquareTPS(object):
         Parameters:
         ----------
         '''
-
         temp = self.merged_tensor(c)
 
         return torch.einsum('ABCDe,abcde->AaBbCcDd', temp.conj(), temp)
@@ -225,7 +224,7 @@ class SquareTPS(object):
         '''
         dts = {}
         for c in self._coords:
-            dts.update({c: self.double_tensor(c)})
+            dts.update({c: self.pure_double_tensor(c)})
 
         return dts
 
@@ -522,5 +521,167 @@ class SquareTPS(object):
                     torch.einsum('aBcde,abcde->Bb', mts_conj[c], mts[c]),
                     torch.einsum('abcDe,abcde->Dd', mts_conj[cy], mts[cy])]
             res.append(torch.einsum('abc,abc', *nums) / torch.einsum('ab,ab', *dens))
+
+        return torch.as_tensor(res)
+
+
+class SquareCTMRG(object):
+    r'''
+    class of CTMRG method on a square lattice with double tensors
+    '''
+    def __init__(
+            self,
+            dts: dict,
+            rho: int,
+            ctms=None,
+            dtype=torch.float64):
+        r'''initialization
+
+        Parameters
+        ----------
+        dts: dict, double tensors
+
+        # double tensor:
+        #       2 3
+        #       | |
+        #    0--***--4
+        #    1--***--5
+        #       | |
+        #       6 7
+        # CTM tensors:
+        # ctm_names: {C0, C1, C2, C3, Ed, Eu, El, Er}
+        #  C2  Eu  C3
+        #   *--*--*
+        #   |  |  |
+        # El*--*--*Er
+        #   |  |  |
+        #   *--*--*
+        #  C0  Ed  C1
+
+        that is, effectively, each site is placed by NINE tensors: 1 double tensor + 8 CTM tensors
+        '''
+        self._dtype = dtype
+        # sorted by the key/coordinate (x, y), firstly by y, then by x
+        # self._dts = dict(sorted(dts.items(), key=lambda x: (x[0][1], x[0][0])))
+        self._dts = dts
+        self._coords = tuple(self._dts.keys())
+        self._size = len(self._coords)
+        # sites along two directions
+        xs = [c[0] for c in self._coords]
+        ys = [c[1] for c in self._coords]
+        # remove duplicated items
+        xs = list(dict.fromkeys(xs))
+        ys = list(dict.fromkeys(ys))
+        self._nx, self._ny = len(xs), len(ys)
+        # inner bond dimension
+        self._chi = self._dts[(0, 0)].shape[0]
+
+        # for CTMRG 
+        self._ctm_names = 'C0', 'C1', 'C2', 'C3', 'Ed', 'Eu', 'El', 'Er'
+        if ctms is None:
+            ctm = {}
+            for i, n in enumerate(self._ctm_names):
+                # corners and edges
+                if i < 4:
+                    ctm.update({n: torch.rand(rho, rho).to(dtype)})
+                else:
+                    ctm.update({n: torch.rand(rho, rho, self._chi, self._chi).to(dtype)})
+            ctms = {}
+            for i, j in itertools.product(range(self._nx), range(self._ny)):
+                ctms.update({(i, j): ctm})
+        else:
+            for c, ctm in ctms.items():
+                assert c in self._coords, 'Coordinate of new CTM tensors is not correct' 
+                for k, v in ctm.items():
+                    if k not in self._ctm_names:
+                        raise ValueError('Name of new CTM tensor is not valid')
+
+        self._ctms = ctms
+        self._rho = self._ctms[(0, 0)]['C0'].shape[0]
+
+
+    @property
+    def coords(self):
+        return self._coords
+
+
+    @property
+    def size(self):
+        return self._size
+
+
+    @property
+    def nx(self):
+        return self._nx
+
+
+    @property
+    def ny(self):
+        return self._ny
+
+
+    @property
+    def bond_dim(self):
+        return self._chi
+
+
+    def double_tensors(self):
+        return deepcopy(self._dts)
+
+
+    def update_ctms(
+            self,
+            ctms: dict):
+        r'''update CTM tensors'''
+        for c, ctm in ctms.items():
+            assert c in self._coords, 'Coordinate of new CTM tensors is not correct' 
+            for k, v in ctm.items():
+                if k not in self._ctm_names:
+                    raise ValueError('Name of new CTM tensor is not valid')
+
+        self._ctms = ctms
+        self._rho = self._ctms[(0, 0)]['C0'].shape[0]
+
+        return 1
+
+
+    def measure_onebody(
+            self,
+            wf: torch.tensor,
+            op: torch.tensor):
+        r'''measure onebody operator'''
+        res = []
+        for i, c in enumerate(self._coords):
+            # left and right environments
+            env_l = torch.einsum(
+                    'ab,bcde,fc->adef',
+                    self._ctms[((c[0]-1) % self._nx, (c[1]-1) % self._ny)]['C0'],
+                    self._ctms[((c[0]-1) % self._nx, (c[1]+0) % self._ny)]['El'],
+                    self._ctms[((c[0]-1) % self._nx, (c[1]+1) % self._ny)]['C2'])
+            env_r = torch.einsum(
+                    'ab,bcde,fc->adef',
+                    self._ctms[((c[0]+1) % self._nx, (c[1]-1) % self._ny)]['C1'],
+                    self._ctms[((c[0]+1) % self._nx, (c[1]+0) % self._ny)]['Er'],
+                    self._ctms[((c[0]+1) % self._nx, (c[1]+1) % self._ny)]['C3'])
+            # denominator
+            temp = env_l.clone()
+            temp = torch.einsum(
+                    'eAag,efDd,AaBbCcDd,ghBb->fCch',
+                    temp,
+                    self._ctms[(c[0], (c[1]-1) % self._ny)]['Ed'],
+                    self._dts[c],
+                    self._ctms[(c[0], (c[1]+1) % self._ny)]['Eu'])
+            den = torch.einsum('abcd,abcd', temp, env_r)
+            # numerator
+            impure_dt = torch.einsum('ABCDE,Ee,abcde->AaBbCcDd', wf[i].conj(), op, wf[i])
+            temp = env_l.clone()
+            temp = torch.einsum(
+                    'eAag,efDd,AaBbCcDd,ghBb->fCch',
+                    temp,
+                    self._ctms[(c[0], (c[1]-1) % self._ny)]['Ed'],
+                    impure_dt,
+                    self._ctms[(c[0], (c[1]+1) % self._ny)]['Eu'])
+            num = torch.einsum('abcd,abcd', temp, env_r)
+            res.append(num / den)
 
         return torch.as_tensor(res)
