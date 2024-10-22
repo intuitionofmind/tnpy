@@ -92,7 +92,7 @@ $$
 \end{equation}
 $$
 
-The **complex conjugate space** of $V$ denoted by $\overline{V}$ is another vector space consisting the same elements and addition structure of $V$.
+The **conjugate space** of $V$ denoted by $\overline{V}$ is another vector space consisting the same elements and addition structure of $V$.
 But the multiplication structure is antilinear.
 That is, $\forall~v\in\overline{V}/V, \alpha\in\mathbb{C}$, $\alpha*v=\overline{\alpha}\cdot{v}$, where $*$ denotes the multplication on $\overline{V}$ and $\cdot$ denotes the multplication on $V$.
 The reason why we introduce this kind of vector space is that we can interprate an antilinear map $f: V\rightarrow{W}$ as a linear map $\overline{V}\rightarrow{W}$ for $f(\alpha*v)=f(\overline{\alpha}\cdot{v})=\alpha{f}(v)$.
@@ -115,21 +115,41 @@ in which we require $(g_{ij})$ is a Hermitian positive-definite matrix satisfyin
 Note that $\langle{c}\mathbf{v}, \mathbf{w}\rangle=\overline{c}\langle\mathbf{v}, \mathbf{w}\rangle$ and $\langle\mathbf{v}, c\mathbf{w}\rangle=c\langle\mathbf{v}, \mathbf{w}\rangle$.
 That is, the complex inner product function is antilinear for the first argument while linear for the second one.
 $g(\mathbf{v}, \mathbf{v})=\sum_{i}g_{ii}\vert{v}_{i}\vert^{2}\geqslant{0}$ satisfying the **positive definiteness**.
-In addition, we check
+In addition, we can check
 $$
 \begin{equation}
    \langle\mathbf{w}, \mathbf{v}\rangle
    =\sum_{ij}\bar{w}_{i}g_{ij}{v}_{j}
    =\sum_{ij}v_{j}\overline{g}_{ji}\overline{w}_{i}
    =\overline{\left(\sum_{ji}\overline{v}_{j}g_{ji}{w}_{i}\right)}
-   =\overline{\langle\mathbf{v}, \mathbf{w}\rangle}.
+   =\overline{\langle\mathbf{v}, \mathbf{w}\rangle}
 \end{equation}
 $$
 satisfying the so-called **conjugate symmetry**.
 Once a vector space is endowed with an inner product, namely an isomporphism from its conjugate space to its dual space is assigned as the metric, it is evaluted to a **normed vector space**.
 Distance between vectors there could be defined.
-Inner prodcut can be viewed as a homomorphsim or contraction $\overline{V}^{*}\otimes{V}\rightarrow\mathbb{C}$.
+Inner product can be viewed as a kind of homomorphsim or contraction: $\overline{V}^{*}\otimes{V}\rightarrow\mathbb{C}$.
+But a contraction does not always represent an inner product.
+Inner product should fulfill particular axioms (conjugate symmetry, positive definiteness, linearity). 
 
-In this sense, we can have another three vector spaces from $V$, namely its dual, conjugate and dual contra
+In this sense, we can have another three vector spaces from $V$, namely its dual, conjugate and conjugate dual ones: $V^{*}, \overline{V}, \overline{V}^{*}$.
+Physicists often like to denote $\overline{V}^{*}$ as $V^{\dagger}$.
+
 ## Tensors
+
+A dual vector maps a vector to a scalar.
+A tensor is a similar mutilinear object mapping some vectors and dual vectors to a scalar.
+A type-$(p, q)$ tensor $T$ can be defined as a map:
+$$
+\begin{equation}
+\otimes_{i=0}^{p-1}V_{i}^{*}\otimes_{j=0}^{q-1}V_{j}\rightarrow\mathbb{C}.
+\end{equation}
+$$
+Here each vector space represents a **bond** (or **index**) of $T$.
+The rank of $T$ is $r=p+q$.
+$T$ can be written as a $r$-dimensional **array** over $\mathbb{C}$ in a specific representation.
+In this sense, we find that a tensor behaviors like a vector.
+Alternatively, we can also view a tensor as a matrix.
+We can group all the indices of $T$ into two groups, namely **domain** and **codomain**.
+$T$ behaves like a matrix mapping from the domain to the codomain.
 
