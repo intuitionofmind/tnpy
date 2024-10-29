@@ -56,7 +56,8 @@ $$
     =\text{dim}\left(\text{ker}f\right)+\text{dim}\left(\text{im}f\right).
 \end{equation}
 $$
-Proof: Since $f$ is linear map, we can directly verify that the elements both in $\text{im}f$ and $\text{ker}f$ satisfy the vector axioms.
+Proof:
+Since $f$ is linear map, we can directly verify that the elements both in $\text{im}f$ and $\text{ker}f$ satisfy the vector axioms.
 Therefore,  $\text{ker}f$ and $\text{im}f$ are vector spaces, with dimension $r$ and $s$, respectively.
 Suppose $\left\{\mathbf{g}_{0}, \cdots, \mathbf{g}_{r-1}\right\}$ and $\left\{\mathbf{h}_{0}^{\prime}, \cdots, \mathbf{h}_{s-1}^{\prime}\right\}$ are the basis for $\text{ker}f$ and $\text{im}f$.
 $f(\mathbf{h}_{i})=\mathbf{h}_{i}^{\prime}, i=0, \cdots, s-1$.
@@ -70,6 +71,7 @@ Note that $\left\{\mathbf{h}_{0}^{\prime}, \cdots, \mathbf{h}_{s-1}^{\prime}\rig
 Then, $\sum_{i}a_{i}\mathbf{g}_{i}=\mathbf{0}$ and $a_{i}=0, \forall{i}$.
 Therefore, $\left\{\mathbf{g}_{0}, \cdots, \mathbf{g}_{r-1}, \mathbf{h}_{0}, \cdots, \mathbf{h}_{s-1}\right\}$ is indeed a linearly independent basis for $V$.
 $\text{dim}(V)=r+s$.
+$\blacksquare$
 
 The vector space spanned by $\left\{\mathbf{h}_{0}, \cdots, \mathbf{h}_{s-1}\right\}$ is called the **orthogonal complement** of $\text{ker}f$.
 
@@ -89,7 +91,7 @@ $\mathbf{e}_{i}^{*}\equiv{f}(\mathbf{e}_{i})$ is a basis of $V^{*}$.
 Furthermore, it can be chosen arbitrarily as $\mathbf{e}_{i}^{*}(\mathbf{e}_{j})\equiv\delta_{ij}$.
 Any $f=\sum_{i}f_{i}\mathbf{e}_{i}^{*}\in{V}^{*}$.
 
-The action of $f$ on $v$ can be interpreted as **contraction** as a homomorphsim: $V^{*}\otimes{V}\to\mathbb{C}$,
+The action of $f$ on $v$ called **contraction** can be interpreted as a homomorphsim: $V^{*}\otimes{V}\to\mathbb{C}$,
 $$
 \begin{equation}
     f(\mathbf{v})\equiv\langle{f}, \mathbf{v}\rangle
@@ -120,7 +122,7 @@ $$
 $$
 in which we require $(g_{ij})$ is a Hermitian positive-definite matrix satisfying $\bar{g}_{ij}=g_{ji}$ and $\text{tr}\left(g_{ij}\right)\neq{0}$.
 Note that $\langle{c}\mathbf{u}, \mathbf{v}\rangle=\overline{c}\langle\mathbf{u}, \mathbf{v}\rangle$ and $\langle\mathbf{u}, c\mathbf{v}\rangle=c\langle\mathbf{u}, \mathbf{v}\rangle$.
-That is, the complex inner product function is antilinear for the first argument while linear for the second one.
+That is, the complex inner product function is antilinear for the first argument while linear for the second one ^[Some others are **used** to swap th antilinearity and linearity for the two arguments.].
 $g(\mathbf{v}, \mathbf{v})=\sum_{i}g_{ii}\vert{v}_{i}\vert^{2}\geqslant{0}$ satisfying the **positive definiteness**.
 In addition, we can check
 $$
@@ -135,8 +137,7 @@ $$
 satisfying the so-called **conjugate symmetry**.
 Once a vector space is endowed with an inner product, namely an isomporphism from its conjugate space to its dual space is assigned as the metric, it is evaluted to a **normed vector space**.
 Distance between vectors there could be defined.
-Inner product can be viewed as a kind of homomorphsim or contraction: $\overline{V}^{*}\otimes{V}\rightarrow\mathbb{C}$.
-But a contraction does not always represent an inner product.
+Inner product can be viewed as a kind of homomorphsim: $\overline{V}^{*}\otimes{V}\rightarrow\mathbb{C}$.
 Inner product should follow particular axioms (conjugate symmetry, positive definiteness and linearity).
 In this sense, we can have another three vector spaces from $V$, namely its dual, conjugate and conjugate dual ones: $V^{*}, \overline{V}, \overline{V}^{*}$.
 Physicists often like to denote $\overline{V}^{*}$ as $V^{\dagger}$.
@@ -162,6 +163,7 @@ If $A$ is a $m\times{n}$ matrix over the field $\mathbb{C}$, $\text{rank}A=\text
 Proof:
 A reduced SVD of $A$ reads $A=U\Lambda{V}$ and $A^{\dagger}=V^{\dagger}\Lambda{U}^{\dagger}$.
 $\text{rank}(A)=\text{rank}(A^{\dagger})=\text{dim}(\Lambda)$.
+$\blacksquare$
 
 **Lemma**:
 Composition of an isomorphism does not change the rank of a map.
@@ -171,6 +173,7 @@ Suppose $f: V\rightarrow{W}$ is a linear map, $\text{rank}(f)=\text{dim}(\text{i
 If $g: W\rightarrow{W}^{\prime}$ is an isomorphism, $\forall{\mathbf{w}}=f(\mathbf{v})\in{W}$, $g(\mathbf{w})=\mathbf{w}^{\prime}\in{W}^{\prime}$ is one-to-one correspodent.
 That is, $\text{dim}[\text{im}(fg)]=\text{dim}(f)$.
 By definition, $\text{rank}(fg)=\text{rank}(f)$.
+$\blacksquare$
 
 According to the two Lemmas, since $g$ and $h$ are both isomorphisms, we immediately have $\text{dim}(\text{im}\tilde{f})=\text{rank}\tilde{f}=\text{rank}(g^{-1}f^{\dagger}h^{\dagger})=\text{rank}(f^{\dagger})=\text{rank}f=\text{dim}(\text{im}f)$.
 
@@ -187,15 +190,16 @@ $$
 Proof:
 By the rank-nullity theorem, we have $\text{dim}(V)=\text{dim}(\text{ker}f)+\text{dim}(\text{im}f)$ and $\text{dim}(W)=\text{dim}(\text{ker}\tilde{f})+\text{dim}(\text{im}\tilde{f})$.
 Since we already have $\text{dim}(\text{im}f)=\text{dim}(\text{im}\tilde{f})$, immediately we arrive at this conclusion.
+$\blacksquare$
 
 **Remarks**:
-Note that this theorem says $\text{dim}\left(V\right)-\text{dim}\left(W\right)$, which is a global property and independent of maps, can be extracted from the details of a specific map $f$.
+Note that this theorem says the quantity $\text{dim}\left(V\right)-\text{dim}\left(W\right)$, which is a global property and independent of maps, can be extracted from the details of a specific map $f$.
 This can be viewed as a finite-dimensional analogy to the Atiyah–Singer index theorem ^[Mikio Nakahara, Geometry, Topology and Physics, Second Edition.]. 
 
 ## Tensors
 
 A dual vector maps a vector to a scalar.
-A tensor is a similar mutilinear object mapping some vectors and dual vectors to a scalar.
+A tensor is a similar mutilinear object mapping some vectors as well as dual vectors to a scalar.
 A type-$(p, q)$ tensor $T$ can be defined as a map:
 $$
 \begin{equation}
@@ -210,4 +214,9 @@ Alternatively, we can also view a tensor as a matrix.
 We can group all the indices of $T$ into two groups and the associated vector spaces are divided into **domain** and **codomain**.
 $T$ behaves like a matrix mapping from the domain to the codomain.
 For example, a linear map $V\rightarrow{W}$ can be represented by a tensor in $V\otimes{W}^{*}$.
+
+**Contraction** of two tensors is a combination of these two linear maps, where the contracted indices are the domain and codomain of the first and second tensors, respectively.
+Each pair of indices are nothing but the contraction or action between the dual vector space and its normal one.
+Contraction is the basic operation to "glue" tensors together.
+Note that the inner product of tensors should be more carefully clarified.
 
