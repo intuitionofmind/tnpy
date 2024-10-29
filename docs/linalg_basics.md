@@ -38,12 +38,18 @@ Linear map is a **homomorphsim** ^[from Greek words *homoios morphe*, means “s
 If $W=K$, $f$ is called a **linear function**.
 The **image** of $f$ is $\text{im}f\equiv{f}(V)\subset{W}$.
 The **kernel** of $f$ is $\text{ker}f\equiv\{\mathbf{v}\in{V}\vert{f}(\mathbf{v})=\mathbf{0}\}$.
+**Rank** of a linear map is defined as the dimension of its image $\text{rank}(f)\equiv\text{dim}\left(\text{im}f\right)$.
+It is equal to the number of the linearly independent columns as well as rows.
+Consider the SVD of the represntative matrix $A=U\Lambda{V}$.
+The first $k$ column vectors of $U$ and row vectors of $V$ form a complete basis of the column and row spaces of $A$, respectively.
+The rank of $A$ is also equal to the number of non-zero singular values in $\Lambda$.
 
 Furthermore, if $f$ is **one-to-one** as well as **onto** (or surjection), $f$ is called an **isomorphsim** ^[Jim Hefferon, Linear Algebra], which means $V$ is **isomorphic** to $W$ denoted by $V\cong{W}$.
 All $n$-dimensional vector spaces are isomorphic to $K^{n}$.
 Any isomorphsim is nothing but an element in $\text{GL}(n, K)$.
 
-**Theorem**: If $f: V\rightarrow{W}$ is a linear map, then
+**Theorem (Rank-nullity theorem)**:
+If $f: V\rightarrow{W}$ is a linear map, then
 $$
 \begin{equation}
     \text{dim}\left(V\right)
@@ -93,36 +99,37 @@ $$
 $$
 
 The **conjugate space** of $V$ denoted by $\overline{V}$ is another vector space consisting the same elements and addition structure of $V$.
-But the multiplication structure is antilinear.
+But the multiplication structure is **antilinear**.
 That is, $\forall~v\in\overline{V}/V, \alpha\in\mathbb{C}$, $\alpha*v=\overline{\alpha}\cdot{v}$, where $*$ denotes the multplication on $\overline{V}$ and $\cdot$ denotes the multplication on $V$.
 The reason why we introduce this kind of vector space is that we can interprate an antilinear map $f: V\rightarrow{W}$ as a linear map $\overline{V}\rightarrow{W}$ for $f(\alpha*v)=f(\overline{\alpha}\cdot{v})=\alpha{f}(v)$.
 
-Given a vector space isomorphism $g: \overline{V}\rightarrow{V}^{*}$.
+Given a vector space isomorphism from its conjugate space to its dual space $g: \overline{V}\rightarrow{V}^{*}$.
 $g\in\text{GL}(m, \mathbb{C})$.
-Basis transforms in the rule $\mathbf{e}_{i}\rightarrow\sum_{j}{g}_{ij}\mathbf{e}_{j}^{*}$.
-Note that $g$ is antilinear on $V\rightarrow{V}^{*}$ as discussed above.
-That is, given $\mathbf{v}=\sum_{i}v_{i}\mathbf{e}_{i}$, $g\left(\mathbf{v}\right)=\sum_{i}\overline{v}_{i}g\left(\mathbf{e}_{i}\right)=\sum_{ij}\overline{v}_{i}g_{ij}\mathbf{e}_{j}^{*}$.
-Once this isomorphism is defined, the **inner product** of two vectors $\mathbf{v}, \mathbf{w}\in{V}$ can be defined through
+$g$ is antilinear on $V\rightarrow\overline{V}^{*}$.
+Suppose the basis transforms in a rule as $\mathbf{e}_{i}\rightarrow\sum_{j}{g}_{ij}\mathbf{e}_{j}^{*}$.
+For $\mathbf{v}=\sum_{i}v_{i}\mathbf{e}_{i}$, $g\left(\mathbf{v}\right)=\sum_{i}\overline{v}_{i}g\left(\mathbf{e}_{i}\right)=\sum_{ij}\overline{v}_{i}g_{ij}\mathbf{e}_{j}^{*}$.
+Once the isomorphism $g$ is defined, the **inner product** of two vectors $\mathbf{u}, \mathbf{v}\in{V}$ can be defined through
 $$
 \begin{equation}
-    g\left(\mathbf{v}\right)\left(\mathbf{w}\right)
-    =\langle{g}\left(\mathbf{v}\right), \mathbf{w}\rangle
-    =\sum_{ij}\overline{v}_{i}g_{ij}\mathbf{e}_{j}^{*}\left(\sum_{k}w_{k}\mathbf{e}_{k}\right)
-    =\sum_{ij}\overline{v}_{i}g_{ij}w_{j}.
+    g\left(\mathbf{u}, \mathbf{v}\right)
+    \equiv{g}\left(\mathbf{u}\right)\left(\mathbf{v}\right)
+    =\langle{g}\left(\mathbf{u}\right), \mathbf{v}\rangle
+    =\sum_{ij}\overline{u}_{i}g_{ij}\mathbf{e}_{j}^{*}\left(\sum_{k}v_{k}\mathbf{e}_{k}\right)
+    =\sum_{ij}\overline{u}_{i}g_{ij}v_{j}.
 \end{equation}
 $$
 in which we require $(g_{ij})$ is a Hermitian positive-definite matrix satisfying $\bar{g}_{ij}=g_{ji}$ and $\text{tr}\left(g_{ij}\right)\neq{0}$.
-Note that $\langle{c}\mathbf{v}, \mathbf{w}\rangle=\overline{c}\langle\mathbf{v}, \mathbf{w}\rangle$ and $\langle\mathbf{v}, c\mathbf{w}\rangle=c\langle\mathbf{v}, \mathbf{w}\rangle$.
+Note that $\langle{c}\mathbf{u}, \mathbf{v}\rangle=\overline{c}\langle\mathbf{u}, \mathbf{v}\rangle$ and $\langle\mathbf{u}, c\mathbf{v}\rangle=c\langle\mathbf{u}, \mathbf{v}\rangle$.
 That is, the complex inner product function is antilinear for the first argument while linear for the second one.
 $g(\mathbf{v}, \mathbf{v})=\sum_{i}g_{ii}\vert{v}_{i}\vert^{2}\geqslant{0}$ satisfying the **positive definiteness**.
 In addition, we can check
 $$
 \begin{equation}
-   \langle\mathbf{w}, \mathbf{v}\rangle
-   =\sum_{ij}\bar{w}_{i}g_{ij}{v}_{j}
-   =\sum_{ij}v_{j}\overline{g}_{ji}\overline{w}_{i}
-   =\overline{\left(\sum_{ji}\overline{v}_{j}g_{ji}{w}_{i}\right)}
-   =\overline{\langle\mathbf{v}, \mathbf{w}\rangle}
+   \langle\mathbf{v}, \mathbf{u}\rangle
+   =\sum_{ij}\bar{v}_{i}g_{ij}{u}_{j}
+   =\sum_{ij}u_{j}\overline{g}_{ji}\overline{v}_{i}
+   =\overline{\left(\sum_{ji}\overline{u}_{j}g_{ji}{v}_{i}\right)}
+   =\overline{\langle\mathbf{u}, \mathbf{v}\rangle}
 \end{equation}
 $$
 satisfying the so-called **conjugate symmetry**.
@@ -130,10 +137,60 @@ Once a vector space is endowed with an inner product, namely an isomporphism fro
 Distance between vectors there could be defined.
 Inner product can be viewed as a kind of homomorphsim or contraction: $\overline{V}^{*}\otimes{V}\rightarrow\mathbb{C}$.
 But a contraction does not always represent an inner product.
-Inner product should fulfill particular axioms (conjugate symmetry, positive definiteness, linearity). 
-
+Inner product should follow particular axioms (conjugate symmetry, positive definiteness and linearity).
 In this sense, we can have another three vector spaces from $V$, namely its dual, conjugate and conjugate dual ones: $V^{*}, \overline{V}, \overline{V}^{*}$.
 Physicists often like to denote $\overline{V}^{*}$ as $V^{\dagger}$.
+
+Now let us consider two vector spaces $V$ and $W$.
+A linear map $f: V\rightarrow{W}$.
+As discussed above, once an isomporphism $g: \overline{V}\rightarrow{V}^{*}$ is given, an inner product on $V$ is defined.
+Similarly, we can given another isomporphism $h: \overline{W}\rightarrow{W}^{*}$ to define an inner product on $W$.
+Then, the **adjoint** of $f$ denoted by $\tilde{f}$ is defined by $g(\mathbf{v}, \tilde{f}\mathbf{w})=\overline{h(\mathbf{w}, f\mathbf{v})}, \forall~\mathbf{v}\in{V}, \mathbf{w}\in{W}$.
+Explicitly,
+$\sum_{ij}\overline{v}_{i}g_{ij}\sum_{k}\tilde{f}_{jk}w_{k}=\sum_{ij}w_{i}\overline{h}_{ij}\sum_{k}\overline{f}_{jk}\overline{v}_{k}$.
+That is, $\sum_{ijk}\overline{v}_{i}g_{ij}\tilde{f}_{jk}w_{k}=\sum_{ijk}\overline{v}_{i}f_{ij}^{\dagger}h_{jk}^{\dagger}w_{k}$, where $f^{\dagger}\equiv\overline{f}^{T}$.
+Thus we find the matrix representation for $\tilde{f}$:
+$$
+\begin{equation}
+    \tilde{f}=g^{-1}f^{\dagger}h^{\dagger}.
+\end{equation}
+$$
+
+**Lemma**:
+If $A$ is a $m\times{n}$ matrix over the field $\mathbb{C}$, $\text{rank}A=\text{rank}A^{\dagger}$.
+
+Proof:
+A reduced SVD of $A$ reads $A=U\Lambda{V}$ and $A^{\dagger}=V^{\dagger}\Lambda{U}^{\dagger}$.
+$\text{rank}(A)=\text{rank}(A^{\dagger})=\text{dim}(\Lambda)$.
+
+**Lemma**:
+Composition of an isomorphism does not change the rank of a map.
+
+Proof:
+Suppose $f: V\rightarrow{W}$ is a linear map, $\text{rank}(f)=\text{dim}(\text{im}f)$.
+If $g: W\rightarrow{W}^{\prime}$ is an isomorphism, $\forall{\mathbf{w}}=f(\mathbf{v})\in{W}$, $g(\mathbf{w})=\mathbf{w}^{\prime}\in{W}^{\prime}$ is one-to-one correspodent.
+That is, $\text{dim}[\text{im}(fg)]=\text{dim}(f)$.
+By definition, $\text{rank}(fg)=\text{rank}(f)$.
+
+According to the two Lemmas, since $g$ and $h$ are both isomorphisms, we immediately have $\text{dim}(\text{im}\tilde{f})=\text{rank}\tilde{f}=\text{rank}(g^{-1}f^{\dagger}h^{\dagger})=\text{rank}(f^{\dagger})=\text{rank}f=\text{dim}(\text{im}f)$.
+
+**Theorem (Toy index theorem)**:
+$V$ and $W$ are two finite dimensional vector spaces over a field $K$ and $f: V\rightarrow{W}$ is a linear map.
+Then
+$$
+\begin{equation}
+    \text{dim}\left(\text{ker}f\right)-\text{dim}\left(\text{ker}\tilde{f}\right)
+    =\text{dim}\left(V\right)-\text{dim}\left(W\right).
+\end{equation}
+$$
+
+Proof:
+By the rank-nullity theorem, we have $\text{dim}(V)=\text{dim}(\text{ker}f)+\text{dim}(\text{im}f)$ and $\text{dim}(W)=\text{dim}(\text{ker}\tilde{f})+\text{dim}(\text{im}\tilde{f})$.
+Since we already have $\text{dim}(\text{im}f)=\text{dim}(\text{im}\tilde{f})$, immediately we arrive at this conclusion.
+
+**Remarks**:
+Note that this theorem says $\text{dim}\left(V\right)-\text{dim}\left(W\right)$, which is a global property and independent of maps, can be extracted from the details of a specific map $f$.
+This can be viewed as a finite-dimensional analogy to the Atiyah–Singer index theorem ^[Mikio Nakahara, Geometry, Topology and Physics, Second Edition.]. 
 
 ## Tensors
 
@@ -148,8 +205,9 @@ $$
 Here each vector space represents a **bond** (or **index**) of $T$.
 The rank of $T$ is $r=p+q$.
 $T$ can be written as a $r$-dimensional **array** over $\mathbb{C}$ in a specific representation.
-In this sense, we find that a tensor behaviors like a vector.
+In this sense, we find that a tensor behaviors like a dual vector.
 Alternatively, we can also view a tensor as a matrix.
-We can group all the indices of $T$ into two groups, namely **domain** and **codomain**.
+We can group all the indices of $T$ into two groups and the associated vector spaces are divided into **domain** and **codomain**.
 $T$ behaves like a matrix mapping from the domain to the codomain.
+For example, a linear map $V\rightarrow{W}$ can be represented by a tensor in $V\otimes{W}^{*}$.
 
