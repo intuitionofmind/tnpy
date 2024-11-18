@@ -1,6 +1,6 @@
 # Basics of linear algebra
 
-##  Vector space
+## 1. Vector space
 
 Refs:
 
@@ -78,7 +78,7 @@ The vector space spanned by $\left\{\mathbf{h}_{0}, \cdots, \mathbf{h}_{s-1}\rig
 A map $f: V\to{W}$ is an **antilinear map** ^[1507.06545. Physicists prefer "antilinear" while mathematicans prefer "conjugate linear".] if $f(\alpha{v})=\overline{\alpha}f(v)$ while keeping the linear addition structure.
 Antilinear maps usually occur in quantum mechanics.
 
-## Dual and conjugate vector spaces
+## 2. Dual and conjugate vector spaces
 
 Now let us set $K=\mathbb{C}$.
 $K=\mathbb{R}$ is only a special case.
@@ -196,24 +196,24 @@ $\blacksquare$
 Note that this theorem says the quantity $\text{dim}\left(V\right)-\text{dim}\left(W\right)$, which is a global property and independent of maps, can be extracted from the details of a specific map $f$.
 This can be viewed as a finite-dimensional analogy to the Atiyah–Singer index theorem ^[Mikio Nakahara, Geometry, Topology and Physics, Second Edition.]. 
 
-## Tensors
+## 3. Tensors
 
 A dual vector maps a vector to a scalar.
 A tensor is a similar mutilinear object mapping some vectors as well as dual vectors to a scalar.
 A type-$(p, q)$ tensor $T$ can be defined as a map:
 $$
 \begin{equation}
-\otimes_{i=0}^{p-1}V_{i}^{*}\otimes_{j=0}^{q-1}V_{j}\rightarrow\mathbb{C}.
+    T: \otimes_{i=0}^{p-1}V_{i}^{*}\otimes_{j=0}^{q-1}V_{j}\rightarrow\mathbb{C}.
 \end{equation}
 $$
 Here each vector space represents a **bond** (or **index**) of $T$.
 The rank of $T$ is $r=p+q$.
-$T$ can be written as a $r$-dimensional **array** over $\mathbb{C}$ in a specific representation.
+$T$ can be written as a $r$-dimensional **array** over $\mathbb{C}$.
 In this sense, we find that a tensor behaviors like a dual vector.
 Alternatively, we can also view a tensor as a matrix.
-We can group all the indices of $T$ into two groups and the associated vector spaces are divided into **domain** and **codomain**.
-$T$ behaves like a matrix mapping from the domain to the codomain.
-For example, a linear map $V\rightarrow{W}$ can be represented by a tensor in $V\otimes{W}^{*}$.
+That is, we can group all the indices of $T$ into two groups and the associated vector spaces are divided into **domain** and **codomain**.
+Then $T$ behaves like a matrix mapping from the domain to the codomain.
+For a simplest example, a linear map $V\rightarrow{W}$ can be represented by a tensor in $V\otimes{W}^{*}$.
 
 **Contraction** of two tensors is a combination of these two linear maps, where the contracted indices are the domain and codomain of the first and second tensors, respectively.
 Each pair of indices are nothing but the contraction or action between the dual vector space and its normal one.
