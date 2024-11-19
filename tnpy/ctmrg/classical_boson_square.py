@@ -593,9 +593,9 @@ class ClassicalSquareCTMRG(object):
                     self._ctms[(bi, fj)]['C2'])
             env_r = torch.einsum(
                     'ab,bcd,ec->ade', 
-                    self._ctms[(fi, bj)]['C1'],
-                    self._ctms[(fi, j)]['Er'],
-                    self._ctms[(fi, fj)]['C3'])
+                    self._ctms[((i+2) % self._nx, bj)]['C1'],
+                    self._ctms[((i+2) % self._nx, j)]['Er'],
+                    self._ctms[((i+2) % self._nx, fj)]['C3'])
             # denominator
             temp = env_l.clone()
             temp = torch.einsum(
@@ -635,10 +635,39 @@ class ClassicalSquareCTMRG(object):
                     self._ctms[(fi, bj)]['C1'])
             env_u = torch.einsum(
                     'ab,acd,ce->bde',
-                    self._ctms[(bi, fj)]['C2'],
-                    self._ctms[(i, fj)]['Eu'],
-                    self._ctms[(fi, fj)]['C3'])
+                    self._ctms[(bi, (j+2) % self._ny)]['C2'],
+                    self._ctms[(i, (j+2) % self._ny)]['Eu'],
+                    self._ctms[(fi, (j+2) % self._ny)]['C3'])
             # denominator
+            temp = env_d.clone()
+            temp = torch.einsum(
+                    'abc,ade,efgb,chg->dfh',
+                    temp,
+                    self._ctms[(bi, j)]['El'],
+                    self._ts[(i, j)],
+                    self._ctms[(fi, j)]['Er'])
+            temp = torch.einsum(
+                    'abc,ade,efgb,chg->dfh',
+                    temp,
+                    self._ctms[(bi, fj)]['El'],
+                    self._ts[(i, fj)],
+                    self._ctms[(fi, fj)]['Er'])
+            den = torch.einsum('abc,abc', temp, env_u)
+            # neumerator
+            temp = env_d.clone()
+            temp = torch.einsum(
+                    'abc,ade,efgb,chg->dfh',
+                    temp,
+                    self._ctms[(bi, j)]['El'],
+                    impure_ts[0],
+                    self._ctms[(fi, j)]['Er'])
+            temp = torch.einsum(
+                    'abc,ade,efgb,chg->dfh',
+                    temp,
+                    self._ctms[(bi, fj)]['El'],
+                    impure_ts[1],
+                    self._ctms[(fi, fj)]['Er'])
+            num = torch.einsum('abc,abc', temp, env_u)
 
         else:
             raise ValueError('direction %s is not not valid' % direction)
