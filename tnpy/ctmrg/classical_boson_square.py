@@ -21,7 +21,7 @@ class ClassicalSquareCTMRG(object):
         r'''
         Parameters
         ----------
-        ts: dict, dict of rank-4 site tensors, key: coordinate
+        ts: dict, dict of rank-4 site tensors, {key: coordinate, value: tensor}
         '''
         self._dtype = dtype
         self._ts = ts
@@ -566,7 +566,7 @@ class ClassicalSquareCTMRG(object):
     def test(self):
         print('1')
 
-    def mt(
+    def measure_twobody(
             self,
             c: tuple[int, int],
             impure_ts: tuple[torch.tensor, torch.tensor],
@@ -574,54 +574,74 @@ class ClassicalSquareCTMRG(object):
         r'''measure twobody operator using CTM tensors
         Parameters
         ----------
-        c: tuple, anchoring coordinate
+        c: tuple[int], anchoring coordinate
         '''
         i, j = c
+        # forward and backward sites
+        bi, fi = (i-1) % self._nx, (i+1) % self._nx
+        bj, fj = (j-1) % self._ny, (j+1) % self._ny
         # *--e
         # |c
         # *--d
         # |b
         # *--a
-        env_l = torch.einsum(
-                'ab,bcd,ec->ade',
-                self._ctms[((i-1) % self._nx, (j-1) % self._ny)]['C0'], 
-                self._ctms[((i-1) % self._nx, j)]['El'],
-                self._ctms[((i-1) % self._nx, (j+1) % self._ny)]['C2'])
-        env_r = torch.einsum(
-                'ab,bcd,ec->ade', 
-                self._ctms[((i+1) % self._nx, (j-1) % self._ny)]['C1'],
-                self._ctms[((i+1) % self._nx, j)]['Er'],
-                self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['C3'])
-        # denominator
-        temp = env_l.clone()
-        temp = torch.einsum(
-                'abc,ade,bfge,chf->dgh',
-                temp,
-                self._ctms[(i, (j-1) % self._ny)]['Ed'],
-                self._ts[(i, j)],
-                self._ctms[(i, (j+1) % self._ny)]['Eu'])
-        temp = torch.einsum(
-                'abc,ade,bfge,chf->dgh',
-                temp,
-                self._ctms[((i+1) % self._nx, (j-1) % self._ny)]['Ed'],
-                self._ts[((i+1) % self._nx, j)],
-                self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['Eu'])
-        den = torch.einsum('abc,abc', temp, env_r)
-        # neumerator
-        temp = env_l.clone()
-        temp = torch.einsum(
-                'abc,ade,bfge,chf->dgh',
-                temp,
-                self._ctms[(i, (j-1) % self._ny)]['Ed'],
-                impure_ts[0],
-                self._ctms[(i, (j+1) % self._ny)]['Eu'])
-        temp = torch.einsum(
-                'abc,ade,bfge,chf->dgh',
-                temp,
-                self._ctms[((i+1) % self._nx, (j-1) % self._ny)]['Ed'],
-                impure_ts[1],
-                self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['Eu'])
-        num = torch.einsum('abc,abc', temp, env_r)
+        if 'x' == direction:
+            env_l = torch.einsum(
+                    'ab,bcd,ec->ade',
+                    self._ctms[(bi, bj)]['C0'], 
+                    self._ctms[(bi, j)]['El'],
+                    self._ctms[(bi, fj)]['C2'])
+            env_r = torch.einsum(
+                    'ab,bcd,ec->ade', 
+                    self._ctms[(fi, bj)]['C1'],
+                    self._ctms[(fi, j)]['Er'],
+                    self._ctms[(fi, fj)]['C3'])
+            # denominator
+            temp = env_l.clone()
+            temp = torch.einsum(
+                    'abc,ade,bfge,chf->dgh',
+                    temp,
+                    self._ctms[(i, bj)]['Ed'],
+                    self._ts[(i, j)],
+                    self._ctms[(i, fj)]['Eu'])
+            temp = torch.einsum(
+                    'abc,ade,bfge,chf->dgh',
+                    temp,
+                    self._ctms[(fi, bj)]['Ed'],
+                    self._ts[(fi, j)],
+                    self._ctms[(fi, fj)]['Eu'])
+            den = torch.einsum('abc,abc', temp, env_r)
+            # neumerator
+            temp = env_l.clone()
+            temp = torch.einsum(
+                    'abc,ade,bfge,chf->dgh',
+                    temp,
+                    self._ctms[(i, bj)]['Ed'],
+                    impure_ts[0],
+                    self._ctms[(i, fj)]['Eu'])
+            temp = torch.einsum(
+                    'abc,ade,bfge,chf->dgh',
+                    temp,
+                    self._ctms[(fi, bj)]['Ed'],
+                    impure_ts[1],
+                    self._ctms[(fi, fj)]['Eu'])
+            num = torch.einsum('abc,abc', temp, env_r)
+
+        elif 'y' == direction:
+            env_d = torch.einsum(
+                    'ab,acd,ce->bde',
+                    self._ctms[(bi, bj)]['C0'], 
+                    self._ctms[(i, bj)]['Ed'],
+                    self._ctms[(fi, bj)]['C1'])
+            env_u = torch.einsum(
+                    'ab,acd,ce->bde',
+                    self._ctms[(bi, fj)]['C2'],
+                    self._ctms[(i, fj)]['Eu'],
+                    self._ctms[(fi, fj)]['C3'])
+            # denominator
+
+        else:
+            raise ValueError('direction %s is not not valid' % direction)
 
         return (num / den)
 
