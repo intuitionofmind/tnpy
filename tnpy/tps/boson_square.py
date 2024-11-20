@@ -204,6 +204,14 @@ class SquareTPS(object):
         return self.absorb_envs(self._site_tensors[site], envs)
 
 
+    def merged_tensors(self):
+        temp = {}
+        for c in self._coords:
+            temp.update({c: self.merged_tensor(c)})
+
+        return temp
+
+
     def pure_double_tensor(
             self,
             c: tuple):
