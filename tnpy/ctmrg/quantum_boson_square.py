@@ -12,36 +12,6 @@ torch.set_printoptions(precision=5)
 
 import tnpy as tp
 
-class ClassicalSquareCTMRG(object):
-    r'''class of CTMRG on a square lattice for a classcial model'''
-    def __init__(
-            self,
-            ts: dict,
-            rho: int,
-            dtype=torch.float64):
-        r'''
-        Parameters
-        ----------
-        t:
-        '''
-        self._dtype = dtype
-        self._ts = ts
-
-        self._coords = tuple(self._ts.keys())
-        self._size = len(self._coords)
-        # sites along two directions
-        xs = [c[0] for c in self._coords]
-        ys = [c[1] for c in self._coords]
-        # remove duplicated items
-        xs = list(dict.fromkeys(xs))
-        ys = list(dict.fromkeys(ys))
-        self._nx, self._ny = len(xs), len(ys)
-        # inner bond dimension
-        self._chi = self._ts[(0, 0)].shape[0]
-
-
-
-
 class QuantumSquareCTMRG(object):
     r'''class of CTMRG method on a square lattice for a quantum wavefunction'''
     def __init__(
@@ -52,7 +22,7 @@ class QuantumSquareCTMRG(object):
         r'''
         Parameters
         ----------
-        wfs: dict, dict of wavefunction tensors
+        wfs: dict, dict of wavefunction tensors, {key: coordinate, value: rank-5 tensor}
         rho: int, bond dimension of ctm tensors
 
         # CTM tensors:
@@ -64,8 +34,7 @@ class QuantumSquareCTMRG(object):
         #   |  |  |
         #   *--*--*
         #  C0  Ed  C1
-
-        that is, effectively, each site is placed by NINE tensors: 1 double tensor + 8 CTM tensors
+        that is, effectively, each site is placed by NINE tensors: 1 wf tensor + 8 CTM tensors
         '''
         self._dtype = dtype
         # sorted by the key/coordinate (x, y), firstly by y, then by x
@@ -81,7 +50,7 @@ class QuantumSquareCTMRG(object):
         ys = list(dict.fromkeys(ys))
         self._nx, self._ny = len(xs), len(ys)
         # inner bond dimension
-        self._chi = self._dts[(0, 0)].shape[0]
+        self._chi = self._wfs[(0, 0)].shape[0]
 
         # double tensors
         #       2 3
@@ -90,12 +59,11 @@ class QuantumSquareCTMRG(object):
         #    1--***--5
         #       | |
         #       6 7
+        # the conjugate index is put ahead
         self._dts = {}
         for c in self._coords:
             self._dts.update(
-                    {c: torch.einsum(
-                        'ABCDe,abcde->AaBbCcDd',
-                        wfs[c].conj(), wfs[c])})
+                    {c: torch.einsum('ABCDe,abcde->AaBbCcDd', wfs[c].conj(), wfs[c])})
 
         # CTMRG environment tensors
         self._ctm_names = 'C0', 'C1', 'C2', 'C3', 'Ed', 'Eu', 'El', 'Er'
@@ -105,7 +73,12 @@ class QuantumSquareCTMRG(object):
             if i < 4:
                 temp.update({n: torch.rand(rho, rho).to(dtype)})
             else:
+            # 0--*--1
+            #   / \
+            #  2   3
                 temp.update({n: torch.rand(rho, rho, self._chi, self._chi).to(dtype)})
+        # every site is associted with a set of CTM tensors
+        self._ctms = {}
         for c in self._coords:
             self._ctms.update({c: temp})
         self._rho = rho
@@ -156,14 +129,115 @@ class QuantumSquareCTMRG(object):
         return 1
 
 
+    def rg_projectors_u(
+            self,
+            c: tuple[int, int]):
+        r'''build projectors for CTMRG up move
+        Parameters
+        ----------
+        c: tuple, coordinate of anchoring point
+        '''
+        i, j = c
+        # x: the anchoring point
+        # *--*--*--* MPS
+        # |  |  |  |
+        # *--x--*--* MPO
+        # |  |  |  |
+        mpo, mps, mpo_mps = [None]*4, [None]*4, [None]*4
+        mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
+        mpo[-1] = self._ctms[((i+2) % self._nx, j)]['Er']
+        for k in range(2):
+            mpo[k+1] = self._dts[((i+k) % self._nx, j)]
+        jj = (j+1) % self._ny
+        mps[0] = self._ctms[((i-1) % self._nx, jj)]['C2']
+        mps[-1] = self._ctms[((i+2) % self._nx, jj)]['C3']
+        for k in range(2):
+            mps[k+1] = self._ctms[((i+k) % self._nx, jj)]['Eu']
+        # MPO-MPS
+        mpo_mps[0] = torch.einsum('abcd,eb->ecda', mpo[0], mps[0])
+        mpo_mps[-1] = torch.einsum('abcd,eb->ecda', mpo[-1], mps[-1])
+        for k in range(2):
+            mpo_mps[k+1] = torch.einsum('AaBbCcDd,efBb->eAafCcDd', mpo[k+1], mps[k+1])
+        # left and right part
+        # !pay attention to the order of output tensor
+        # *--a--*--e,0
+        # *--b--*--f,1
+        # *--c--*--g,2
+        # |    | |
+        # d    h i
+        # 3    4 5
+        rho_l = torch.einsum('abcd,abcefghi->efgdhi', mpo_mps[0], mpo_mps[1])
+        # 0,a--*--d--*
+        # 1,b--*--e--*
+        # 2,c--*--f--*
+        #     | |    |
+        #     g h    i
+        #     4 5    3
+        rho_r = torch.einsum('abcdefgh,defi->abcigh', mpo_mps[2], mpo_mps[3])
+        # QR and LQ factorizations
+        q, r = tp.linalg.tqr(rho_l, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(3, 0))
+        q, l = tp.linalg.tqr(rho_r, group_dims=((3, 4, 5), (0, 1, 2)), qr_dims=(0, 3))
+        # build projectors
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        return pl, pr
+
+
+    def rg_mu(self):
+        r'''
+        a CTMRG up step
+        merge the whole unit cell into up boundary MPS
+        update related CTM tensors
+        '''
+        for j, i in itertools.product(range(self._ny-1, -1, -1), range(self._nx)):
+            # (i, j) as the anchoring point of MPO
+            mpo, mps, mpo_mps = [None]*(self._nx+2), [None]*(self._nx+2), [None]*(self._nx+2)
+            mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
+            # (i+self._nx) % self._nx = i
+            mpo[-1] = self._ctms[(i, j)]['Er']
+            for k in range(self._nx):
+                mpo[k+1] = self._dts[((i+k) % self._nx, j)]
+            jj = (j+1) % self._ny
+            mps[0] = self._ctms[((i-1) % self._nx, jj)]['C2']
+            mps[-1] = self._ctms[(i, jj)]['C3']
+            for k in range(self._nx):
+                mps[k+1] = self._ctms[((i+k) % self._nx, jj)]['Eu']
+            # MPO-MPS
+            mpo_mps[0] = torch.einsum('abcd,eb->ecda', mpo[0], mps[0])
+            mpo_mps[-1] = torch.einsum('abcd,eb->ecda', mpo[-1], mps[-1])
+            for k in range(self._nx):
+                mpo_mps[k+1] = torch.einsum('AaBbCcDd,efBb->eAafCcDd', mpo[k+1], mps[k+1])
+            mps = [None]*(self._nx+2)
+            pl, pr = self.rg_projectors_u(c=((i-1) % self._nx, j))
+            mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], pl)
+            for k in range(self._nx):
+                pl_prime, pr_prime = self.rg_projectors_u(c=((i+k) % self._nx, j))
+                mps[k+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pr, mpo_mps[k+1], pl_prime)
+                # move to next site
+                pl, pr = pl_prime, pr_prime
+            mps[-1] = torch.einsum('abcd,bcde->ae', pr, mpo_mps[-1])
+            # update related CTM tensors
+            self._ctms[((i-1) % self._nx, j)]['C2'] = mps[0] / torch.linalg.norm(mps[0])
+            self._ctms[(i, j)]['C3'] = mps[-1] / torch.linalg.norm(mps[-1])
+            for k in range(self._nx):
+                self._ctms[((i+k) % self._nx, j)]['Eu'] = mps[k+1] / torch.linalg.norm(mps[k+1])
+
+        return 1
+
+
     def measure_onebody(
             self,
+            c: tuple,
             op: torch.tensor):
         r'''measure onebody operator
-
         Parameters:
         ----------
-        wf: torch.tensor, wavefunction as a unified tensor
+        c: coordinate of site
         op: torch.tensor, operator to be measured
         '''
         res = []
