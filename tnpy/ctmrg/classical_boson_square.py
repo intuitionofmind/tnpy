@@ -110,15 +110,15 @@ class ClassicalSquareCTMRG(object):
             self,
             c: tuple[int, int]):
         r'''build projectors for CTMRG up move
-
         Parameters
         ----------
         c: tuple, coordinate of anchoring point
         '''
         i, j = c
+        # x: the anchoring point
         # *--*--*--* MPS
         # |  |  |  |
-        # *--*--*--* MPO
+        # *--x--*--* MPO
         # |  |  |  |
         mpo = [self._ts[((i+k) % self._nx, j)] for k in range(2)]
         mpo.insert(0, self._ctms[((i-1) % self._nx, j)]['El'])
@@ -212,8 +212,9 @@ class ClassicalSquareCTMRG(object):
             c: tuple[int, int]):
         r''''''
         i, j = c
+        # x: the anchoring point
         # |  |  |  |
-        # *--*--*--* MPO
+        # *--x--*--* MPO
         # |  |  |  |
         # *--*--*--* MPS
         mpo, mps, mpo_mps = [None]*4, [None]*4, [None]*4
@@ -329,11 +330,12 @@ class ClassicalSquareCTMRG(object):
             c: tuple[int, int]):
         r''''''
         i, j = c
+        # x: the anchoring point
         # *--*--
         # |  |  
         # *--*--
         # |  |
-        # *--*--
+        # *--x--
         # |  |
         # *--*--
         mpo, mps, mpo_mps = [None]*4, [None]*4, [None]*4
@@ -449,11 +451,12 @@ class ClassicalSquareCTMRG(object):
             c: tuple[int, int]):
         r''''''
         i, j = c
+        # x: the anchoring point
         # --*--*
         #   |  |  
         # --*--*
         #   |  |
-        # --*--*
+        # --x--*
         #   |  |
         # --*--*
         mpo, mps, mpo_mps = [None]*4, [None]*4, [None]*4
