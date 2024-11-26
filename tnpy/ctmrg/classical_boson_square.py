@@ -443,8 +443,8 @@ class ClassicalSquareCTMRG(object):
             # update related CTM tensors
             self._ctms[((i-1) % self._nx, j)]['C0'] = mps[0] / torch.linalg.norm(mps[0])
             self._ctms[(i, j)]['C2'] = mps[-1] / torch.linalg.norm(mps[-1])
-            for k in range(self._nx):
-                self._ctms[((i+k) % self._nx, j)]['El'] = mps[k+1] / torch.linalg.norm(mps[k+1])
+            for k in range(self._ny):
+                self._ctms[(i, (j+k) % self._ny)]['El'] = mps[k+1] / torch.linalg.norm(mps[k+1])
 
         return 1
 
@@ -564,13 +564,11 @@ class ClassicalSquareCTMRG(object):
             # update related CTM tensors
             self._ctms[((i-1) % self._nx, j)]['C1'] = mps[0] / torch.linalg.norm(mps[0])
             self._ctms[(i, j)]['C3'] = mps[-1] / torch.linalg.norm(mps[-1])
-            for k in range(self._nx):
-                self._ctms[((i+k) % self._nx, j)]['Er'] = mps[k+1] / torch.linalg.norm(mps[k+1])
+            for k in range(self._ny):
+                self._ctms[(i, (j+k) % self._ny)]['Er'] = mps[k+1] / torch.linalg.norm(mps[k+1])
 
         return 1
 
-    def test(self):
-        print('1')
 
     def measure_twobody(
             self,
