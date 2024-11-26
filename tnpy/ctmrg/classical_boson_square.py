@@ -129,6 +129,9 @@ class ClassicalSquareCTMRG(object):
         mps.append(self._ctms[((i+2) % self._nx, jj)]['C3'])
         # MPO-MPS
         mpo_mps = [None]*4
+        # *-0
+        # *-1
+        # |2
         mpo_mps[0] = torch.einsum('abc,db->dca', mpo[0], mps[0])
         mpo_mps[-1] = torch.einsum('abc,db->dca', mpo[-1], mps[-1])
         for k in range(2):
@@ -427,8 +430,8 @@ class ClassicalSquareCTMRG(object):
             # |b |c
             # *--*
             #  |a
-            for k in range(self._nx):
-                pl_prime, pr_prime = self.rg_projectors_l(c=((i+k) % self._nx, j))
+            for k in range(self._ny):
+                pl_prime, pr_prime = self.rg_projectors_l(c=(i, (j+k) % self._ny))
                 mps[k+1] = torch.einsum('abc,bcdef,deg->agf', pr, mpo_mps[k+1], pl_prime)
                 # move to next site
                 pl, pr = pl_prime, pr_prime
@@ -548,8 +551,8 @@ class ClassicalSquareCTMRG(object):
             #      |c |b
             #      *--*
             #       |a,0
-            for k in range(self._nx):
-                pl_prime, pr_prime = self.rg_projectors_r(c=((i+k) % self._nx, j))
+            for k in range(self._ny):
+                pl_prime, pr_prime = self.rg_projectors_r(c=(i, (j+k) % self._ny))
                 mps[k+1] = torch.einsum('abc,bcdef,deg->agf', pr, mpo_mps[k+1], pl_prime)
                 # move to next site
                 pl, pr = pl_prime, pr_prime
