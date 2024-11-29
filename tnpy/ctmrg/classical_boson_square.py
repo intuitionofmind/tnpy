@@ -166,21 +166,23 @@ class ClassicalSquareCTMRG(object):
 
     def rg_mu(self):
         r'''
-        a CTMRG up step, merge the whole unit cell into up boundary MPS
+        CTMRG up move
+        effectively merge the boundary MPS down to next row
         update related CTM tensors
         '''
         for i, j in itertools.product(range(self._nx), range(self._ny)):
             # x: (i, j)
-            # *--*--* MPS
+            # *--*--* MPS, row-k
             # |  |  |
-            # *--x--* MPO
+            # *--x--* MPO, row-j
             # |  |  |
-            mps = [None]*3
-            mpo, mpo_mps = [None]*3, [None]*3
             k = (j+1) % self._ny
+            mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
+            # MPS
             mps[0] = self._ctms[((i-1) % self._nx, k)]['C2']
             mps[1] = self._ctms[(i, k)]['Eu']
             mps[2] = self._ctms[((i+1) % self._nx, k)]['C3']
+            # MPO
             mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
             mpo[1] = self._ts[(i, j)]
             mpo[2] = self._ctms[((i+1) % self._nx, j)]['Er']
@@ -202,7 +204,8 @@ class ClassicalSquareCTMRG(object):
             mps[0] = torch.einsum('abc,abd->dc', mpo_mps[0], pl)
             mps[1] = torch.einsum('abc,bcdef,deg->agf', pr, mpo_mps[1], pl_prime)
             mps[2] = torch.einsum('abc,bcd->ad', pr_prime, mpo_mps[2])
-            # update related CTM tensors: row-k
+            # push to next row
+            # update related CTM tensors: row-j
             self._ctms[((i-1) % self._nx, j)]['C2'] = mps[0] / torch.linalg.norm(mps[0])
             self._ctms[(i, j)]['Eu'] = mps[1] / torch.linalg.norm(mps[1])
             self._ctms[((i+1) % self._nx, j)]['C3'] = mps[2] / torch.linalg.norm(mps[2])
@@ -269,7 +272,8 @@ class ClassicalSquareCTMRG(object):
 
     def rg_md(self):
         r'''
-        a CTMRG up step, merge the whole unit cell into up boundary MPS
+        a CTMRG down move
+        effectively merge the MPS up to next row
         update related CTM tensors
         '''
         for i, j in itertools.product(range(self._nx), range(self._ny)):
@@ -278,12 +282,13 @@ class ClassicalSquareCTMRG(object):
             # *--x--* MPO
             # |  |  |
             # *--*--* MPS
-            mps = [None]*3
+            mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
+            # MPS
             k = (j-1) % self._ny
             mps[0] = self._ctms[((i-1) % self._nx, k)]['C0']
             mps[1] = self._ctms[(i, k)]['Ed']
             mps[2] = self._ctms[((i+1) % self._nx, k)]['C1']
-            mpo, mpo_mps = [None]*3, [None]*3
+            # MPO
             mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
             mpo[1] = self._ts[(i, j)]
             mpo[2] = self._ctms[((i+1) % self._nx, j)]['Er']
@@ -375,7 +380,7 @@ class ClassicalSquareCTMRG(object):
 
     def rg_ml(self):
         r'''
-        a CTMRG left step, merge the whole unit cell into up boundary MPS
+        a CTMRG left step
         update related CTM tensors
         '''
         for i, j in itertools.product(range(self._nx), range(self._ny)):
@@ -385,12 +390,13 @@ class ClassicalSquareCTMRG(object):
             # *--x--
             # |  |
             # *--*--
-            mps = [None]*3
+            mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
+            # MPS
             k = (i-1) % self._nx
             mps[0] = self._ctms[(k, (j-1) % self._ny)]['C0']
             mps[1] = self._ctms[(k, j)]['El']
             mps[2] = self._ctms[(k, (j+1) % self._ny)]['C2']
-            mpo, mpo_mps = [None]*3, [None]*3
+            # MPO
             mpo[0] = self._ctms[(i, (j-1) % self._ny)]['Ed']
             mpo[1] = self._ts[(i, j)]
             mpo[2] = self._ctms[(i, (j+1) % self._ny)]['Eu']
@@ -503,12 +509,13 @@ class ClassicalSquareCTMRG(object):
             # --x--*
             #   |  |
             # --*--*
-            mps = [None]*3
-            mpo, mpo_mps = [None]*3, [None]*3
+            mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
+            # MPS
             k = (i+1) % self._nx
             mps[0] = self._ctms[(k, (j-1) % self._ny)]['C1']
             mps[1] = self._ctms[(k, j)]['Er']
             mps[2] = self._ctms[(k, (j+1) % self._ny)]['C3']
+            # MPO
             mpo[0] = self._ctms[(i, (j-1) % self._ny)]['Ed']
             mpo[1] = self._ts[(i, j)]
             mpo[2] = self._ctms[(i, (j+1) % self._ny)]['Eu']
