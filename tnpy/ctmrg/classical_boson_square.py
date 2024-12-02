@@ -40,7 +40,7 @@ class ClassicalSquareCTMRG(object):
 
         # CTMRG environment tensors
         # each tensor in the unit cell is associated with a set of environment tensors
-        # convention
+        # bond order convention:
         # C:
         # |1
         # *--0, x-direction: 0, y-direction: 1
@@ -167,8 +167,8 @@ class ClassicalSquareCTMRG(object):
     def rg_mu(self):
         r'''
         CTMRG up move
+        update related up boundary CTM tensors
         effectively merge the boundary MPS down to next row
-        update related CTM tensors
         '''
         for i, j in itertools.product(range(self._nx), range(self._ny)):
             # x: (i, j)

@@ -138,7 +138,7 @@ class QuantumSquareCTMRG(object):
         c: tuple, coordinate of anchoring point
         '''
         i, j = c
-        # x: the anchoring point
+        # x: (i, j), the anchoring point
         # *--*--*--* MPS
         # |  |  |  |
         # *--x--*--* MPO
@@ -204,42 +204,49 @@ class QuantumSquareCTMRG(object):
     def rg_mu(self):
         r'''
         a CTMRG up step
-        merge the whole unit cell into up boundary MPS
-        update related CTM tensors
+        update related up boundary CTM tensors
+        effectively merge the boundary MPS down to next row
         '''
-        for j, i in itertools.product(range(self._ny-1, -1, -1), range(self._nx)):
-            # (i, j) as the anchoring point of MPO
-            mpo, mps, mpo_mps = [None]*(self._nx+2), [None]*(self._nx+2), [None]*(self._nx+2)
+        for i, j in itertools.product(range(self._nx), range(self._ny)):
+            # x: (i, j)
+            # *--*--* MPS, row-k
+            # |  |  |
+            # *--x--* MPO, row-j
+            # |  |  |
+            k = (j+1) % self._ny
+            mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
+            # MPS
+            mps[0] = self._ctms[((i-1) % self._nx, k)]['C2']
+            mps[1] = self._ctms[(i, k)]['Eu']
+            mps[2] = self._ctms[((i+1) % self._nx, k)]['C3']
+            # MPO
             mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
-            # (i+self._nx) % self._nx = i
-            mpo[-1] = self._ctms[(i, j)]['Er']
-            for k in range(self._nx):
-                mpo[k+1] = self._dts[((i+k) % self._nx, j)]
-            jj = (j+1) % self._ny
-            mps[0] = self._ctms[((i-1) % self._nx, jj)]['C2']
-            mps[-1] = self._ctms[(i, jj)]['C3']
-            for k in range(self._nx):
-                mps[k+1] = self._ctms[((i+k) % self._nx, jj)]['Eu']
-            # MPO-MPS
+            mpo[1] = self._dts[(i, j)]
+            mpo[2] = self._ctms[((i+1) % self._nx, j)]['Er']
+            # *--e,0
+            # |b
+            # *--c,1
+            # *--d,2
+            # |a,3
             mpo_mps[0] = torch.einsum('abcd,eb->ecda', mpo[0], mps[0])
-            mpo_mps[-1] = torch.einsum('abcd,eb->ecda', mpo[-1], mps[-1])
-            for k in range(self._nx):
-                mpo_mps[k+1] = torch.einsum('AaBbCcDd,efBb->eAafCcDd', mpo[k+1], mps[k+1])
-            # new MPS
-            mps = [None]*(self._nx+2)
+            # e,0--*--f,3
+            #     |B|b
+            # A,1--*--C,4
+            # a,2--*--c,5
+            #     |D|d
+            #     6 7
+            mpo_mps[1] = torch.einsum('AaBbCcDd,efBb->eAafCcDd', mpo[1], mps[1])
+            # build projectors
             pl, pr = self.rg_projectors_u(c=((i-1) % self._nx, j))
+            pl_prime, pr_prime = self.rg_projectors_u(c=(i, j))
+            # use projectors to compress
             mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], pl)
-            for k in range(self._nx):
-                pl_prime, pr_prime = self.rg_projectors_u(c=((i+k) % self._nx, j))
-                mps[k+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pr, mpo_mps[k+1], pl_prime)
-                # move to next site
-                pl, pr = pl_prime, pr_prime
-            mps[-1] = torch.einsum('abcd,bcde->ae', pr, mpo_mps[-1])
+            mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pr, mpo_mps[1], pl_prime)
+            mps[2] = torch.einsum('abcd,bcde->ae', pr_prime, mpo_mps[2])
             # update related CTM tensors
             self._ctms[((i-1) % self._nx, j)]['C2'] = mps[0] / torch.linalg.norm(mps[0])
-            self._ctms[(i, j)]['C3'] = mps[-1] / torch.linalg.norm(mps[-1])
-            for k in range(self._nx):
-                self._ctms[((i+k) % self._nx, j)]['Eu'] = mps[k+1] / torch.linalg.norm(mps[k+1])
+            self._ctms[(i, j)]['Eu'] = mps[1] / torch.linalg.norm(mps[1])
+            self._ctms[((i+1) % self._nx, j)]['C3'] = mps[2] / torch.linalg.norm(mps[2])
 
         return 1
 
@@ -482,7 +489,9 @@ class QuantumSquareCTMRG(object):
             # e     Dd
             # 0     12
             for k in range(self._ny):
-                mpo_mps[k+1] = torch.einsum('AaBbCcDd,efAa->eDdfBbCc', mpo[k+1], mps[k+1])
+                mpo_mps[k+1] = torch.einsum(
+                        'AaBbCcDd,efAa->eDdfBbCc',
+                        mpo[k+1], mps[k+1])
             mps = [None]*(self._ny+2)
             pl, pr = self.rg_projectors_l(c=(i, (j-1) % self._ny))
             #  |e
@@ -506,7 +515,9 @@ class QuantumSquareCTMRG(object):
                 # |||
                 # ***
                 #  |a
-                mps[k+1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pr, mpo_mps[k+1], pl_prime)
+                mps[k+1] = torch.einsum(
+                        'abcd,bcdefghi,efgj->ajhi',
+                        pr, mpo_mps[k+1], pl_prime)
                 # move to next site
                 pl, pr = pl_prime, pr_prime
             # ***--e
@@ -524,6 +535,166 @@ class QuantumSquareCTMRG(object):
 
         return 1
 
+
+    def rg_projectors_r(
+            self,
+            c: tuple[int, int]):
+        r'''build projectors for CTMRG right move
+        Parameters
+        ----------
+        c: tuple, coordinate of anchoring point
+        '''
+        i, j = c
+        mpo, mps, mpo_mps = [None]*4, [None]*4, [None]*4
+        # perspective: from down to up
+        # x: the anchoring point
+        # --*--*
+        #   |  |
+        # --*--*
+        #   |  |  
+        # --x--*
+        #   |  |
+        # --*--*
+        mpo, mps, mpo_mps = [None]*4, [None]*4, [None]*4
+        mpo[0] = self._ctms[(i, (j-1) % self._ny)]['Ed']
+        mpo[-1] = self._ctms[(i, (j+2) % self._ny)]['Eu']
+        for k in range(2):
+            mpo[k+1] = self._dts[(i, (j+k) % self._ny)]
+        ii = (i+1) % self._nx
+        mps[0] = self._ctms[(ii, (j-1) % self._ny)]['C1']
+        mps[-1] = self._ctms[(ii, (j+2) % self._ny)]['C3']
+        for k in range(2):
+            mps[k+1] = self._ctms[(ii, (j+k) % self._ny)]['Er']
+        # MPO-MPS
+        # !pay attention to the order of ouptput tensor's bonds
+        #      23     1
+        #      cd     e
+        #      ||     |
+        # 0,a--**--b--*
+        mpo_mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
+        mpo_mps[-1] = torch.einsum('abcd,be->aecd', mpo[-1], mps[-1])
+        #  Bb     f
+        #  ||     |
+        # A-*--C--*
+        # a-*--c--*
+        #  ||     |
+        #  Dd     e
+        #  12     0
+        for k in range(2):
+            mpo_mps[k+1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[k+1], mps[k+1])
+        # left and right part:
+        #      345
+        #      efg
+        #      |||
+        # h,1--* *
+        # i,2--* *
+        #      |||
+        #      bcd 
+        #      |||
+        # a,0--* *
+        rho_l = torch.einsum('abcd,bcdefghi->ahiefg', mpo_mps[0], mpo_mps[1])
+        # i,0--* *
+        #      |||
+        #      def
+        #      |||
+        # g,1--* *
+        # h,2--* *
+        #      |||
+        #      abc 
+        #      345
+        rho_r = torch.einsum('abcdefgh,idef->ighabc', mpo_mps[2], mpo_mps[3])
+        # QR and LQ factorizations
+        q, r = tp.linalg.tqr(rho_l, group_dims=((0, 1, 2), (3, 4, 5)), qr_dims=(3, 0))
+        q, l = tp.linalg.tqr(rho_r, group_dims=((0, 1, 2), (3, 4, 5)), qr_dims=(0, 3))
+        # build projectors
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+
+        return pl, pr
+
+
+    def rg_mr(self):
+        r'''
+        a CTMRG right move step, merge the whole unit cell into up boundary MPS
+        update related CTM tensors
+        '''
+        for j, i in itertools.product(range(self._ny-1, -1, -1), range(self._nx)):
+            # (i, j) as the anchoring point of MPO
+            mpo, mps, mpo_mps = [None]*(self._ny+2), [None]*(self._ny+2), [None]*(self._ny+2)
+            mpo[0] = self._ctms[(i, (j-1) % self._ny)]['Ed']
+            # (j+self._ny) % self._ny = j
+            mpo[-1] = self._ctms[(i, j)]['Eu']
+            for k in range(self._ny):
+                mpo[k+1] = self._dts[(i, (j+k) % self._ny)]
+            ii = (i+1) % self._nx
+            mps[0] = self._ctms[(ii, (j-1) % self._ny)]['C1']
+            mps[-1] = self._ctms[(ii, j)]['C3']
+            for k in range(self._ny):
+                mps[k+1] = self._ctms[(ii, (j+k) % self._ny)]['Er']
+            # MPO-MPS
+            # !pay attention to the order of ouptput tensor's bonds
+            #      23     1
+            #      cd     e
+            #      ||     |
+            # 0,a--**--b--*
+            mpo_mps[0] = torch.einsum('abcd,be->aecd', mpo[0], mps[0])
+            mpo_mps[-1] = torch.einsum('abcd,be->aecd', mpo[-1], mps[-1])
+            #  Bb     f
+            #  ||     |
+            # A-*--C--*
+            # a-*--c--*
+            #  ||     |
+            #  Dd     e
+            #  12     0
+            for k in range(self._ny):
+                mpo_mps[k+1] = torch.einsum('AaBbCcDd,efCc->eDdfBbAa', mpo[k+1], mps[k+1])
+            # use projectors to compress
+            mps = [None]*(self._ny+2)
+            pl, pr = self.rg_projectors_r(c=(i, (j-1) % self._ny))
+            #     |e
+            #    ***
+            #    ||| 
+            #    bcd
+            #    |||
+            # a--***
+            mps[0] = torch.einsum('abcd,bcde->ae', mpo_mps[0], pl)
+            for k in range(self._ny):
+                pl_prime, pr_prime = self.rg_projectors_r(c=(i, (j+k) % self._ny))
+                #     |j
+                #    ***
+                #    |||
+                #    efg
+                #    |||
+                # h--***
+                # i--***
+                #    |||
+                #    bcd
+                #    |||
+                #    ***
+                #     |a
+                mps[k+1] = torch.einsum(
+                        'abcd,bcdefghi,efgj->ajhi',
+                        pr, mpo_mps[k+1], pl_prime)
+                # move to next site
+                pl, pr = pl_prime, pr_prime
+            # ***--e
+            # |||
+            # bcd
+            # ||| 
+            # ***
+            #  |a
+            mps[-1] = torch.einsum('abcd,ebcd->ea', pr, mpo_mps[-1])
+            # update related CTM tensors
+            self._ctms[((i-1) % self._nx, j)]['C1'] = mps[0] / torch.linalg.norm(mps[0])
+            self._ctms[(i, j)]['C3'] = mps[-1] / torch.linalg.norm(mps[-1])
+            for k in range(self._ny):
+                self._ctms[(i, (j+k) % self._ny)]['Er'] = mps[k+1] / torch.linalg.norm(mps[k+1])
+
+        return 1
 
 
     def measure_onebody(
