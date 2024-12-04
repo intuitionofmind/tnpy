@@ -647,41 +647,145 @@ class QuantumSquareCTMRG(object):
         c: coordinate of site
         op: torch.tensor, operator to be measured
         '''
-        res = []
-        for i, c in enumerate(self._coords):
-            # left and right environments
+        i, j = c
+        # *--f,3
+        # |c
+        # *--d,1
+        # *--e,2
+        # |b
+        # *--a,0
+        env_l = torch.einsum(
+                'ab,bcde,fc->adef',
+                self._ctms[((i-1) % self._nx, (j-1) % self._ny)]['C0'],
+                self._ctms[((i-1) % self._nx, j)]['El'],
+                self._ctms[((i-1) % self._nx, (j+1) % self._ny)]['C2'])
+        env_r = torch.einsum(
+                'ab,bcde,fc->adef',
+                self._ctms[((i+1) % self._nx, (j-1) % self._ny)]['C1'],
+                self._ctms[((i+1) % self._nx, j)]['Er'],
+                self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['C3'])
+        # denominator
+        temp = env_l.clone()
+        # *--g--*--h,3
+        # |    |B|b
+        # *--A--*--C,1
+        # *--a--*--c,2
+        # |    |D|d
+        # *--e--*--f,0
+        temp = torch.einsum(
+                'eAag,efDd,AaBbCcDd,ghBb->fCch',
+                temp,
+                self._ctms[(i, (j-1) % self._ny)]['Ed'],
+                self._dts[c],
+                self._ctms[(i, (j+1) % self._ny)]['Eu'])
+        den = torch.einsum('abcd,abcd', temp, env_r)
+        # numerator
+        impure_dt = torch.einsum(
+                'ABCDE,Ee,abcde->AaBbCcDd',
+                self._wfs[c].conj(), op, self._wfs[c])
+        temp = env_l.clone()
+        temp = torch.einsum(
+                'eAag,efDd,AaBbCcDd,ghBb->fCch',
+                temp,
+                self._ctms[(i, (j-1) % self._ny)]['Ed'],
+                impure_dt,
+                self._ctms[(i, (j+1) % self._ny)]['Eu'])
+        num = torch.einsum('abcd,abcd', temp, env_r)
+
+        print(num, den)
+        return (num / den)
+
+
+    def measure_twobody(
+            self,
+            c: tuple,
+            op: torch.tensor,
+            direction='x'):
+        r'''measure onebody operator
+        Parameters:
+        ----------
+        c: coordinate of site
+        op: twobody operator
+        # |0|1
+        # * *
+        # |2|3
+        '''
+        # SVD to MPO
+        # |0       |0
+        # *--2, 2--*
+        # |1       |1
+        u, s, v = tp.linalg.tsvd(op, group_dims=((0, 2), (1, 3)), svd_dims=(1, 0))
+        ss = torch.sqrt(s).diag().to(self._dtype)
+        us = torch.einsum('abc,bB->aBc', u, ss)
+        sv = torch.einsum('Aa,abc->bAc', ss, v)
+        op_mpo = us, sv
+        i, j = c
+        if  'x' == direction:
+            # *--f,3
+            # |c
+            # *--d,1
+            # *--e,2
+            # |b
+            # *--a,0
             env_l = torch.einsum(
                     'ab,bcde,fc->adef',
-                    self._ctms[((c[0]-1) % self._nx, (c[1]-1) % self._ny)]['C0'],
-                    self._ctms[((c[0]-1) % self._nx, c[1])]['El'],
-                    self._ctms[((c[0]-1) % self._nx, (c[1]+1) % self._ny)]['C2'])
+                    self._ctms[((i-1) % self._nx, (j-1) % self._ny)]['C0'],
+                    self._ctms[((i-1) % self._nx, j)]['El'],
+                    self._ctms[((i-1) % self._nx, (j+1) % self._ny)]['C2'])
             env_r = torch.einsum(
                     'ab,bcde,fc->adef',
-                    self._ctms[((c[0]+1) % self._nx, (c[1]-1) % self._ny)]['C1'],
-                    self._ctms[((c[0]+1) % self._nx, c[1])]['Er'],
-                    self._ctms[((c[0]+1) % self._nx, (c[1]+1) % self._ny)]['C3'])
+                    self._ctms[((i+2) % self._nx, (j-1) % self._ny)]['C1'],
+                    self._ctms[((i+2) % self._nx, j)]['Er'],
+                    self._ctms[((i+2) % self._nx, (j+1) % self._ny)]['C3'])
             # denominator
             temp = env_l.clone()
+            # *--g--*--h,3
+            # |    |B|b
+            # *--A--*--C,1
+            # *--a--*--c,2
+            # |    |D|d
+            # *--e--*--f,0
             temp = torch.einsum(
                     'eAag,efDd,AaBbCcDd,ghBb->fCch',
                     temp,
-                    self._ctms[(c[0], (c[1]-1) % self._ny)]['Ed'],
+                    self._ctms[(i, (j-1) % self._ny)]['Ed'],
                     self._dts[c],
-                    self._ctms[(c[0], (c[1]+1) % self._ny)]['Eu'])
+                    self._ctms[(i, (j+1) % self._ny)]['Eu'])
+            temp = torch.einsum(
+                    'eAag,efDd,AaBbCcDd,ghBb->fCch',
+                    temp,
+                    self._ctms[((i+1) % self._nx, (j-1) % self._ny)]['Ed'],
+                    self._dts[((i+1) % self._nx, j)],
+                    self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['Eu'])
             den = torch.einsum('abcd,abcd', temp, env_r)
             # numerator
-            impure_dt = torch.einsum('ABCDE,Ee,abcde->AaBbCcDd', wf[i].conj(), op, wf[i])
+            # build impure double tensors
+            impure_dts = [None]*2
+            impure_dts[0] = torch.einsum(
+                    'ABCDE,Efe,abcde->AaBbCfcDd',
+                    self._wfs[c].conj(), op_mpo[0], self._wfs[c])
+            impure_dts[1] = torch.einsum(
+                    'ABCDE,Efe,abcde->AfaBbCcDd',
+                    self._wfs[((i+1) % self._nx, j)].conj(),
+                    op_mpo[1],
+                    self._wfs[((i+1) % self._nx, j)])
             temp = env_l.clone()
             temp = torch.einsum(
-                    'eAag,efDd,AaBbCcDd,ghBb->fCch',
+                    'eAag,efDd,AaBbCicDd,ghBb->fCich',
                     temp,
-                    self._ctms[(c[0], (c[1]-1) % self._ny)]['Ed'],
-                    impure_dt,
-                    self._ctms[(c[0], (c[1]+1) % self._ny)]['Eu'])
+                    self._ctms[(i, (j-1) % self._ny)]['Ed'],
+                    impure_dts[0],
+                    self._ctms[(i, (j+1) % self._ny)]['Eu'])
+            temp = torch.einsum(
+                    'eAiag,efDd,AiaBbCcDd,ghBb->fCch',
+                    temp,
+                    self._ctms[((i+1) % self._nx, (j-1) % self._ny)]['Ed'],
+                    impure_dts[1],
+                    self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['Eu'])
             num = torch.einsum('abcd,abcd', temp, env_r)
-            res.append(num / den)
+        elif 'y' == direction:
+            pass
+        else:
+            raise ValueError('Your direction is not valid')
 
-        return torch.as_tensor(res)
-
-    def measure_twobody(self):
-        pass
+        return (num / den)
