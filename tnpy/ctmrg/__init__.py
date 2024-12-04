@@ -1,2 +1,2 @@
-from .classical_boson_square_2 import ClassicalSquareCTMRG
+from .classical_boson_square import ClassicalSquareCTMRG
 from .quantum_boson_square import QuantumSquareCTMRG
