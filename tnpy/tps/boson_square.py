@@ -105,6 +105,36 @@ class SquareTPS(object):
         return cls(site_tensors=site_tensors, link_tensors=link_tensors, dtype=dtype)
 
 
+    @classmethod
+    def randn(
+            cls,
+            nx: int,
+            ny: int,
+            chi: int,
+            dtype=torch.float64):
+        r'''
+        generate a random SquareTPS
+
+        Parameters
+        ----------
+        nx: int, number of sites along x-direction in a unit cell
+        ny: int, number of sites along y-direction in a unit cell
+        chi: int, bond dimension of the site tensor
+        rho: int, bond dimension of boundary CTM tensors
+        '''
+        site_shape = (chi, chi, chi, chi, 2)
+        site_tensors, link_tensors = {}, {}
+        for i, j in itertools.product(range(nx), range(ny)):
+            temp = torch.randn(site_shape).to(dtype)
+            lam_x = torch.rand(chi).diag().to(dtype)
+            lam_y = torch.rand(chi).diag().to(dtype)
+            # normalization
+            site_tensors[(i, j)] = temp / torch.linalg.norm(temp)
+            link_tensors[(i, j)] = [lam_x / torch.linalg.norm(lam_x), lam_y / torch.linalg.norm(lam_y)]
+
+        return cls(site_tensors=site_tensors, link_tensors=link_tensors, dtype=dtype)
+
+
     @property
     def coords(self):
         return self._coords
