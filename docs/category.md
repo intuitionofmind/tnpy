@@ -1,9 +1,9 @@
 
 # Introduction
 
-## Basic concepts
+## 1. Basic concepts
 
-### Category
+### 1.1. Category
 A **category** $\mathbf{C}$ consists of following data:
 - A set $\text{Ob}(\mathbf{C})=\{A, B, C...\}$, of which elements are called **objects** of $\mathbf{C}$.
 - For every pair of objects $A, B\in\text{Ob}(\mathbf{C})$, there is a set $\text{Hom}_{\mathbf{C}}(A, B)$, of which elements are called **morphisms** from $A$ to $B$.
@@ -22,12 +22,27 @@ $$
 for any $f: A\rightarrow{B}$, $g: B\rightarrow{C}$ and $h: C\rightarrow{D}$.
 They are always refered as **identity laws** and **associativity**, respectively.
 
-### Functor
+### 1.2. Functor and natural transformation
+
 Let $\mathbf{C}$ and $\mathbf{D}$ be two categories.
-A **functor** $F: \mathbf{C}\rightarrow\mathbf{D}$ is a map.
+A **functor** $F: \mathbf{C}\rightarrow\mathbf{D}$ consists of two maps:
+- A map $F: \text{Ob}(\mathbf{C})\rightarrow\text{Ob}(\mathbf{D})$.
+- For every pair of objects $A, B\in\text{Ob}(\mathbf{C})$, there is another map $\tilde{F}: \text{Hom}_{\mathbf{C}}(A, B)\rightarrow\text{Hom}_{\mathbf{D}}(F(A), F(B))$.
+  For a morphism $f: A\rightarrow B$, $\tilde{F}(f): F(A)\rightarrow F(B)$.
+  For simplicity, sometimes we still use $F$ to denote $\tilde{F}$.
 
+These maps shoud satisfy:
+- $F$ preserves identity.
+  That is, for any $A\in\text{Ob}(\mathbf{C})$, $F(\text{id}_{A})=\text{id}_{F(A)}$.
+- $F$ preserves associativity.
+  That is, for any $A, B, C\in\text{Ob}(\mathbf{C})$ and $f: A\rightarrow{B}$, $g: B\rightarrow{C}$, $F(g\circ f)=F(g)\circ F(f)$.
 
-## Graphical language
+**Note:**
+If $f: A\rightarrow B$ is invertible, which means there exists $f^{-1}: B\rightarrow A$ satisfying $f^{-1}\circ f=\text{id}_{A}$.
+Thus we have $F(\text{id}_{A})=F(f^{-1}\circ f)=F(f^{-1})\circ F(f)=\text{id}_{F(A)}$, which indicates that $F(f^{-1})=F(f)^{-1}$.
+That is, if $f$ is invertible, $F(f)$ is also invertible.
+
+## 2. Graphical language
 
 In a graphical language ^[0908.3347, Peter Selinger, A survey of graphical languages for monoidal categories.], objects are represented by **wires** and morphisms are represented by **nodes**.
 This is the tensor language.
