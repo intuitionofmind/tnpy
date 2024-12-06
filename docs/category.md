@@ -22,6 +22,16 @@ $$
 for any $f: A\rightarrow{B}$, $g: B\rightarrow{C}$ and $h: C\rightarrow{D}$.
 They are always refered as **identity laws** and **associativity**, respectively.
 
+**Example**
+The category of all groups $\mathbf{Grp}$ consists of all groups as objects and group homomorphisms as morphisms.
+Isomorphisms of groups are the isomorphisms in this category.
+For instance, $\left(\mathbb{R}, +\right)\cong\left(\mathbb{R}^{+}, \times\right)$.
+
+**Example**
+The category $\mathbf{FinVect}_{\mathbb{k}}$.
+The objects are finite-dimensional vector spaces over a field $\mathbb{k}$ and morphsims are the linear maps between these vector spaces.
+Matrix mulitiplication acts as composition of morphisms.
+
 ### 1.2. Functor and natural transformation
 
 Let $\mathbf{C}$ and $\mathbf{D}$ be two categories.
