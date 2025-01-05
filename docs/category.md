@@ -34,6 +34,8 @@ Matrix mulitiplication acts as composition of morphisms.
 
 ### 1.2. Functor and natural transformation
 
+*Functors are morphisms between categories.*
+
 Let $\mathbf{C}$ and $\mathbf{D}$ be two categories.
 A **functor** $F: \mathbf{C}\rightarrow\mathbf{D}$ consists of two maps:
 - A map $F: \text{Ob}(\mathbf{C})\rightarrow\text{Ob}(\mathbf{D})$.
@@ -51,6 +53,27 @@ These maps shoud satisfy:
 If $f: A\rightarrow B$ is invertible, which means there exists $f^{-1}: B\rightarrow A$ satisfying $f^{-1}\circ f=\text{id}_{A}$.
 Thus we have $F(\text{id}_{A})=F(f^{-1}\circ f)=F(f^{-1})\circ F(f)=\text{id}_{F(A)}$, which indicates that $F(f^{-1})=F(f)^{-1}$.
 That is, if $f$ is invertible, $F(f)$ is also invertible.
+
+Functors represent the idea of changing contexts.
+Suppose $\mathbf{C}$ is very abstract while $\mathbf{D}$ is a very concrete category.
+A functor $F: \mathbf{C}\rightarrow\mathbf{D}$ give us a **representation** of $\mathbf{C}$ in $\mathbf{D}$.
+The functor preserves the structure of $\mathbf{C}$.
+A **theory** in quantum physics can be regarded as a functor $F: \mathbf{C}\rightarrow\mathbf{D}\equiv\textbf{FdHilb}$.
+
+Suppose $F, G: \mathbf{C}\rightarrow\mathbf{D}$ are functors from $\mathbf{C}$ to $\mathbf{D}$, a **natural transformation** $\varphi: F\rightarrow{G}$ consists a set of morphsims $\left\{\varphi_{V}\in\text{Hom}_{\mathbf{D}}\left(F(V), G(V)\right), V\in\text{Ob}(\mathbf{C})\right\}$ such that, for all morphisms $f\in\text{Hom}_{\mathbf{C}}(V, W)$, $\varphi_{W}\circ F(f)=G(f)\circ\varphi_{V}$.
+That is, the following diagram commutes for all $V, W\in\text{Ob}(\mathbf{C})$ and $f\in\text{Hom}_{\mathbf{C}}(V, W)$:
+<figure>
+<img src="./figures/nt_commute_digram.png" alt="cuprate" class="" width="200px" align="center" title="cuprate">
+<figcaption></figcaption>
+</figure>
+
+If all morphisms in $\varphi$ are isomorphisms, $\varphi$ is called a **natrual isomorphism** and the two functors $F$ and $G$ are called isomorphic.
+
+### 1.3. Product of categories and functors
+
+We can further define the **product** of two categories $\mathbf{C}$ and $\mathbf{C}^{\prime}$ as $\mathbf{C}\times\mathbf{C}^{\prime}$.
+Objects are given by $\text{Ob}(\mathbf{C}\times\mathbf{C}^{\prime})=\text{Ob}(\mathbf{C})\times\text{Ob}(\mathbf{C}^{\prime})$, of which elements are just denoted by tuples $\left(V, V^{\prime}\right)$.
+Morphisms are given by $\text{Hom}_{\mathbf{C}\times\mathbf{C}^{\prime}}\left(\left(V, V^{\prime}\right), \left(W, W^{\prime}\right)\right)=\text{Hom}_{\mathbf{C}}(V, W)\times\text{Hom}_{\mathbf{C}^{\prime}}(V^{\prime}, W^{\prime})$, in which 
 
 ## 2. Graphical language
 
