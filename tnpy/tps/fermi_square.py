@@ -393,7 +393,8 @@ class FermiSquareTPS(object):
             # average
             if 'sort' == average_weights:
                 # self.sorted_average_weights(c, ifprint=ifprint)
-                self.sorted_average_weights_plaquette(c, ifprint=ifprint)
+                # self.sorted_average_weights_plaquette(c, ifprint=ifprint)
+                self.sorted_average_weights_bond(c, ifprint=ifprint)
             elif 'direct' == average_weights:
                 self.direct_average_weights(c, ifprint=ifprint)
 
@@ -895,6 +896,58 @@ class FermiSquareTPS(object):
         #     print(key, (val-op.blocks()[key]).norm())
 
         return mpos
+
+
+    def sorted_average_weights_bond(self, c: tuple, ifprint=False):
+        r'''
+        average sorted weights
+        '''
+
+
+        s_all, cuts = [], []
+        flags = []
+        for d in range(2):
+            se = self._link_tensors[c][d].blocks()[(0, 0)].diag()
+            so = self._link_tensors[c][d].blocks()[(1, 1)].diag()
+
+            if se[0].item() > so[0].item():
+                s = torch.cat((se, so), dim=0)
+                flags.append(True)
+                cuts.append(se.shape[0])
+            else:
+                s = torch.cat((so, se), dim=0)
+                flags.append(False)
+                cuts.append(so.shape[0])
+
+            s_all.append(s)
+
+            if ifprint:
+                print(se.shape[0], so.shape[0], se, so)
+
+        s_mean = sum(s_all) / len(s_all)
+        s_mean = s_mean / max(s_mean)
+
+        if ifprint:
+            print('sorted average:', s_mean)
+
+        cf = self._link_tensors[(0, 0)][0].cflag
+
+        n = 0
+        for d in range(2):
+            if flags[n]:
+                new_se = s_mean[:cuts[n]].clone()
+                new_so = s_mean[cuts[n]:].clone()
+            else:
+                new_so = s_mean[:cuts[n]].clone()
+                new_se = s_mean[cuts[n]:].clone()
+
+            new_blocks = {(0, 0): new_se.diag(), (1, 1): new_so.diag()}
+            new_gt = GTensor(dual=(0, 1), shape=self._link_tensors[c][d].shape, blocks=new_blocks, cflag=cf)
+            self._link_tensors[c][d] = new_gt
+
+            n += 1
+
+        return 1
 
 
     def sorted_average_weights_plaquette(self, c: tuple, ifprint=False):
