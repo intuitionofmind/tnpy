@@ -14,13 +14,13 @@ class SquareTJ(object):
     t-J model on a square lattice
     '''
 
-    def __init__(self, t: float, J: float, mu: float, schwinger_boson=False):
+    def __init__(self, t: float, Jpm: float, Jz: float, mu: float, schwinger_boson=False):
         r'''
         schwinger_boson: bool, if use the Schwinger boson representation
         '''
 
         self._dim_phys = 2
-        self._t, self._J, self._mu = t, J, mu
+        self._t, self._Jpm, self._Jz, self._mu = t, Jpm, Jz, mu
         self._schwinger_boson = schwinger_boson
 
     def onsite_n(self) -> GTensor:
@@ -445,15 +445,15 @@ class SquareTJ(object):
         # Heisenberg J-terms
         temp.zero_()
         # off-diagonal
-        temp[1, 0, 0, 1] = 0.5
-        temp[0, 1, 1, 0] = 0.5
+        temp[1, 0, 0, 1] = 0.5*self._Jpm
+        temp[0, 1, 1, 0] = 0.5*self._Jpm
         # diagonal
-        temp[1, 1, 0, 0] = -0.5
-        temp[0, 0, 1, 1] = -0.5
+        temp[1, 1, 0, 0] = -0.5*self._Jz
+        temp[0, 0, 1, 1] = -0.5*self._Jz
         qns = [1, 1, 1, 1]
         if self._schwinger_boson:
             qns = [q ^ 1 for q in qns]
-        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(self._J*temp)
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(temp)
 
         # chemical potential
         # there is a minus sign by default
@@ -1026,12 +1026,12 @@ class SquareSigmaTJ(object):
     sigma-t-J model on a square lattice
     '''
 
-    def __init__(self, t: float, J: float, mu: float):
+    def __init__(self, t: float, Jpm: float, Jz: float, mu: float):
         r'''
         '''
 
         self._dim_phys = 2
-        self._t, self._J, self._mu = t, J, mu
+        self._t, self._Jpm, self._Jz, self._mu = t, Jpm, Jz, mu
 
     def onsite_n(self) -> GTensor:
         r'''
@@ -1394,13 +1394,13 @@ class SquareSigmaTJ(object):
         # Heisenberg J-terms
         temp.zero_()
         # off-diagonal
-        temp[1, 0, 0, 1] = 0.5
-        temp[0, 1, 1, 0] = 0.5
+        temp[1, 0, 0, 1] = 0.5*self._Jpm
+        temp[0, 1, 1, 0] = 0.5*self._Jpm
         # diagonal
-        temp[1, 1, 0, 0] = -0.5
-        temp[0, 0, 1, 1] = -0.5
+        temp[1, 1, 0, 0] = -0.5*self._Jz
+        temp[0, 0, 1, 1] = -0.5*self._Jz
         qns = [1, 1, 1, 1]
-        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(self._J*temp)
+        blocks[tuple(qns)] = blocks.get(tuple(qns), bare)+(temp)
 
         # chemical potential
         # there is a minus sign by default

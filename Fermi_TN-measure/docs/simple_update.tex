@@ -1,0 +1,584 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=2cm]{geometry}
+\input{../preamble.tex}
+% \renewcommand{\cite}[1]{}
+\graphicspath{{./images/}}
+
+\begin{document}
+
+\section{Imaginary time evolution of PEPS}
+
+\begingroup
+\def\cirrad{0.1}
+\def\recrad{0.1}
+\def\wtsize{0.08}
+\def\shift{0.3}
+\newcommand{\wt}[2]{
+    \begin{scope}[shift={(#1,#2)}]
+        \draw[fill=yellow] (0,\wtsize) -- (\wtsize,0) 
+        -- (0,-\wtsize) -- (-\wtsize,0) -- cycle;
+    \end{scope}
+}
+\newcommand{\pmat}[2]{
+    \draw[fill=white] (#1,#2) circle (\wtsize);
+}
+\newcommand{\drawTbase}[5]{
+    \draw[#5] (#1,#2) to (#1+#4,#2);
+    \draw[#5] (#1-#4,#2) to (#1,#2);
+    \draw[#5] (#1,#2) to (#1,#2+#4);
+    \draw[#5] (#1,#2-#4) to (#1,#2);
+    \fill[#3] (#1,#2) circle (\cirrad);
+}
+\newcommand{\drawTket}[3]{
+    \draw[midarrow] (#1+\shift,#2+\shift) -- (#1,#2);
+    \drawTbase{#1}{#2}{#3}{0.5}{midarrow}
+}
+\newcommand{\drawTbra}[3]{
+    \drawTbase{#1}{#2}{#3}{0.5}{midarrowrev}
+    \draw[midarrow] (#1,#2) -- (#1-\shift,#2-\shift);
+}
+\newcommand{\drawXket}[3]{
+    \drawTbase{#1}{#2}{#3}{0.5}{midarrow}
+}
+\newcommand{\drawXbra}[3]{
+    \drawTbase{#1}{#2}{#3}{0.5}{midarrowrev}
+}
+\newcommand{\drawaR}[3]{
+    \draw[midarrow] (#1-0.5,#2) to (#1,#2);
+    \draw[midarrow] (#1,#2) to (#1+0.5,#2);
+    \draw[midarrow] (#1+\shift,#2+\shift) to (#1,#2);
+    \draw[#3, fill=white] (#1,#2) circle (\cirrad);
+}
+\newcommand{\gatebond}[2]{
+    \fill[rounded corners=3, color=orange]
+    (#1-\recrad, #2-\recrad) rectangle 
+    (#1+1+\recrad, #2+\recrad);
+}
+\newcommand{\drawgate}{
+    \draw[rounded corners, fill=orange, xslant=1] 
+    (-0.1,0.3) rectangle ++(1.2,0.4);
+    \draw (1,0.5) node {$g_{ij}$};
+    \foreach \x in {0,1} 
+    {\draw[midarrow] (\x+1,1) to (\x+0.7,+0.7);}
+}
+\newcommand{\drawlatbase}[1]{
+    \def\mydrawT{#1}
+    \foreach \x in {0,1,2,3} {
+    \foreach \y in {0,1,2,3} {
+        \pgfmathparse{\x + \y}
+        \let\sumxy\pgfmathresult
+        \ifodd\sumxy
+            \mydrawT{\x}{\y}{green}
+        \else
+            \mydrawT{\x}{\y}{blue}
+        \fi
+        \ifnum\x<3 \wt{\x+0.5}{\y} \fi 
+        \ifnum\y<3 \wt{\x}{\y+0.5} \fi
+    }}
+    \foreach \x in {0,1,2,3} {
+    \foreach \y in {0,1,2,3} {
+        \ifnum\x<3 \wt{\x+0.5}{\y} \fi 
+        \ifnum\y<3 \wt{\x}{\y+0.5} \fi
+    }}
+}
+\newcommand{\drawlatket}{
+    \drawlatbase{\drawTket}
+}
+\newcommand{\drawlatbra}{
+    \drawlatbase{\drawTbra}
+}
+
+A common way to obtain the ground state of a Hamiltonian is \emph{imaginary time evolution}: 
+starting from a random state $\ket{\psi_0}$, the ground state is $\ket{\psi} \approx e^{-\beta H} \ket{\psi_0}$ when $\beta \to \infty$. 
+Suppose that the Hamiltonian is the sum of nearest neighbor terms:
+\begin{equation}
+    H = \sum_{\braket{ij}} H_{ij}. 
+\end{equation}
+Suppose that the initial state is a (fermionic) PEPS on the bipartite square lattice, which contains two sub-lattices labelled as $A, B$ and four types of bonds (non-equivalent under lattice translation) labelled from 1 to 4:
+\begin{equation}
+    \ket{\psi_{AB}} = \begin{diagram}[0.8][1.2]
+        \dobase{0}{1.5} \drawlatket
+        \node[anchor=north west] at (1,1) {$T_A$};
+        \node[anchor=north west] at (2,1) {$T_B$};
+        \node[anchor=south] at (1.5,1) {$\lambda_1$};
+        \node[anchor=east] at (1,1.5) {$\lambda_2$};
+        \node[anchor=north] at (0.5,1) {$\lambda_3$};
+        \node[anchor=east] at (1,0.5) {$\lambda_4$};
+    \end{diagram}. 
+\end{equation}
+Here we assumed translation invariance of both the Hamiltonian and the PEPS. For convenience of the time evolution process, we place a diagonal Schmidt weight matrix $\lambda_a$ (shown as yellow diamonds) on each type-$a$ bond. 
+The infinitesimal evolution operator $e^{-\epsilon H}$ ($\epsilon \ll 1$) can be Trotter decomposed to
+\begin{equation}
+    e^{-\epsilon H}
+    = e^{-\epsilon H_1} \cdots e^{-\epsilon H_4}
+    + O(\epsilon^2), 
+    \quad
+    H_a = \sum_{\braket{ij} \in a} H_{ij}. 
+\end{equation}
+Note that $H_{ij}$ on different type-$a$ bonds do not overlap. Therefore, for each $H_a$, 
+\begin{equation}
+    e^{-\epsilon H_a}
+    = \prod_{\braket{ij} \in a} g_{ij},
+    \quad
+    g_{ij} = e^{-\epsilon H_{ij}}
+\end{equation}
+Each $g_{ij}$ is called a two-body \emph{gate} acting on the neighboring sites $i,j$. Its action on $\ket{\psi(A, B)}$ is
+\begin{equation}
+    \ket{\psi_G}
+    = g_{ij} \ket{\psi_{AB}}
+    = \begin{diagram}[0.8][1.2]
+        \dobase{0}{1.5} \drawlatket
+        \gatebond{1}{1} 
+        \node[anchor=north] at (1.5,1) {$G$};
+    \end{diagram}, 
+\end{equation}
+where the 8-leg tensor $G$ is 
+\begingroup
+\newcommand{\virbonds}{
+    \draw[midarrow] (-0.5,0) to (0,0);
+    \draw[midarrow] (1,0) to (1.5,0);
+    \foreach \x in {0,1} {
+        \lineVa{-0.5}{0}{\x}
+        \lineVa{0}{0.5}{\x}
+        \draw[midarrow] (\x+\shift,\shift) to (\x,0);
+    }
+    \draw[midarrow] (0,0) to (1,0);
+}
+\begin{equation}
+    \begin{diagram}[0.9][1.4]
+        \dobase{0}{0} 
+        \virbonds
+        \fill[blue] (0,0) circle (\cirrad);
+        \fill[green] (1,0) circle (\cirrad);
+        \gatebond{0}{0} 
+        \node[anchor=north] at (0.5,0) {$G$};
+    \end{diagram} = \begin{diagram}[0.9][1.4]
+        \dobase{0}{0}
+        \drawTket{0}{0}{blue}
+        \drawTket{1}{0}{green}
+        \wt{0.5}{0}
+        \node[anchor=north east] at (0,0) {$T_A$};
+        \node[anchor=north] at (0.5,0) {$\lambda_1$};
+        \node[anchor=north west] at (1,0) {$T_B$};
+        \drawgate
+    \end{diagram}
+\end{equation}
+\endgroup
+In $\ket{\psi_G}$, the tensors on sites $i,j$ are replaced by $A', B'$ (while other sites remain unchanged), and the dimension of the bond $\braket{ij}$ is increased to $D' \le d^2 D$ ($d, D$ are the physical and the virtual bond dimensions, respectively), which will grow exponentially as the evolution continues. 
+Therefore, we should approximate $\ket{\psi_G}$ with a PEPS $\ket{\psi_{\tilde{A} \tilde{B}}}$ that has the same virtual bond dimension $D$ on the bond $\braket{ij}$. 
+The updated tensors $\tilde{T}_A, \tilde{T}_B$ and the weight $\tilde{\lambda}_1$ are determined by minimizing the cost function 
+\begin{equation}
+\begin{aligned}
+    f(\tilde{T}_A, \tilde{T}_B, \tilde{\lambda}_1)
+    &= \lVert
+        \ket{\psi_{\tilde{A} \tilde{B}}}
+        - \ket{\psi_G}
+    \rVert^2
+    = \braket{
+        \psi_{\tilde{A} \tilde{B}} |
+        \psi_{\tilde{A} \tilde{B}}
+    } - \left(
+        \braket{
+            \psi_{\tilde{A} \tilde{B}} |
+            \psi_G
+        } + h.c.
+    \right) + \mathrm{const.}
+    \\
+    &= \begin{diagram}[0.8][1.2]
+        \dobase{0}{1.5} 
+        \begin{scope}[opacity=0.3, shift={(\shift,\shift)}]
+            \drawlatbra
+            \node[anchor=south east] 
+            at (1,1) {$\tilde{T}^\dagger_A$};
+            \node[anchor=south] 
+            at (1.5,1) {$\tilde{\lambda}_1$};
+            \node[anchor=south west] 
+            at (2,1) {$\tilde{T}^\dagger_B$};
+        \end{scope}
+        \begin{scope}
+            \drawlatket
+            \node[anchor=north east] 
+            at (1,1) {$\tilde{T}_A$};
+            \node[anchor=north] 
+            at (1.5,1) {$\tilde{\lambda}_1$};
+            \node[anchor=north west] 
+            at (2,1) {$\tilde{T}_B$};
+        \end{scope} 
+    \end{diagram} - \left(
+        \begin{diagram}[0.8][1.2]
+            \dobase{0}{1.5} 
+            \begin{scope}[opacity=0.3, shift={(\shift,\shift)}]
+                \drawlatbra
+                \node[anchor=south east] 
+                at (1,1) {$\tilde{T}^\dagger_A$};
+                \node[anchor=south] 
+                at (1.5,1) {$\tilde{\lambda}_1$};
+                \node[anchor=south west] 
+                at (2,1) {$\tilde{T}^\dagger_B$};
+            \end{scope}
+            \begin{scope}
+                \drawlatket \gatebond{1}{1} 
+                \node[anchor=north] at (1.5,1) {$G$};
+            \end{scope}
+        \end{diagram} + h.c.
+    \right) + \mathrm{const.}
+\end{aligned}
+\label{eq:full-update-cost}
+\end{equation}
+The "const" term is $\braket{\psi_G|\psi_G}$, which independent of $\tilde{A}, \tilde{B}$. 
+After the tensors $\tilde{A}, \tilde{B}$ are found, we shall replace \emph{all} $A, B$ tensors in the PEPS by $\tilde{A}, \tilde{B}$ to approximate (to the same order as the Trotter decomposition) the effect of the entire $e^{-\epsilon H_1}$. 
+The same procedure is also applied to other types of bonds. 
+
+\subsection{Simple update algorithm}
+
+In general, exact evaluation of the cost function is computationally very hard. In the \textit{simple update} algorithm \cite{Jiang2008}, it is assumed that the "\emph{environment tensor}" surrounding the updated bond is simply the direct product of identity and $P$ tensors (draw as small circles) \cite{Gu2013}:
+\newcommand{\rhoedgesA}[1]{
+    \draw[#1] (0,1) -- ++(0.5,0);
+    \draw[#1] (1,0) -- ++(0,0.5);
+    \draw[#1] (1,1.5) -- ++(0,0.5);
+}
+\newcommand{\rhoedgesB}[1]{
+    \draw[#1] (2.5,1) -- ++(0.5,0);
+    \draw[#1] (2,0) -- ++(0,0.5);
+    \draw[#1] (2,1.5) -- ++(0,0.5);
+}
+\def\rhoshift{0.6}
+\newcommand{\rhowts}{
+    \foreach \y in {0,2,3} {
+    \foreach \x in {0,1,2} {
+        \wt{\x+0.5}{\y}
+    }}
+    \foreach \x in {0,1,2,3} {
+    \foreach \y in {0,1,2} {
+        \ifnum\x=1
+            \ifnum\y=0\else \ifnum\y=1\else
+                \wt{\x}{\y+0.5}
+            \fi \fi
+        \else \ifnum\x=2
+            \ifnum\y=0\else \ifnum\y=1\else
+                \wt{\x}{\y+0.5}
+            \fi \fi
+            \else
+                \wt{\x}{\y+0.5}
+            \fi
+        \fi
+    }}
+}
+\newcommand{\drawrho}[1]{
+    \def\mydrawT{#1}
+    \foreach \x in {0,1,2,3} {
+    \foreach \y in {0,1,2,3} {
+        \pgfmathparse{\x + \y}
+        \let\sumxy\pgfmathresult
+        \ifnum\y=1
+            \ifnum\x=1 \else \ifnum\x=2 \else
+                \ifodd\sumxy
+                    \mydrawT{\x}{\y}{green}
+                \else
+                    \mydrawT{\x}{\y}{blue}
+                \fi
+            \fi \fi 
+        \else
+            \ifodd\sumxy
+                \mydrawT{\x}{\y}{green}
+            \else
+                \mydrawT{\x}{\y}{blue}
+            \fi
+        \fi
+    }} \rhowts
+}
+\newcommand{\suenvA}{
+    \begin{scope}
+        \rhoedgesA{midarrow}
+    \end{scope}
+    \foreach \x/\y in {0/1, 1/0}{
+        \draw (\x,\y) -- ++(\rhoshift, \rhoshift);
+    }
+    \foreach \x/\y in {1/2}{
+        \draw (\x,\y) -- ++(\rhoshift, \rhoshift);
+        \pmat{\x+\rhoshift/2}{\y+\rhoshift/2}
+    }
+    \begin{scope}[opacity=0.3,shift={(\rhoshift,\rhoshift)}]
+        \rhoedgesA{midarrowrev}
+    \end{scope}
+}
+\newcommand{\suenvB}{
+    \begin{scope}
+        \rhoedgesB{midarrow}
+    \end{scope}
+    \foreach \x/\y in {2/0}{
+        \draw (\x,\y) -- ++(\rhoshift, \rhoshift);
+    }
+    \foreach \x/\y in {2/2, 3/1}{
+        \draw (\x,\y) -- ++(\rhoshift, \rhoshift);
+        \pmat{\x+\rhoshift/2}{\y+\rhoshift/2}
+    }
+    \begin{scope}[opacity=0.3,shift={(\rhoshift,\rhoshift)}]
+        \rhoedgesB{midarrowrev}
+    \end{scope}
+}
+\newcommand{\suenv}{
+    \suenvA \suenvB
+}
+\begin{equation}
+    \begin{diagram}[0.8][1.2]
+        \dobase{0}{1.2}
+        \begin{scope}[opacity=0.3, shift={(\shift,\shift)}]
+            \drawrho{\drawTbra}
+        \end{scope}
+        \begin{scope}
+            \drawrho{\drawTket}
+        \end{scope} 
+    \end{diagram}
+    = \begin{diagram}[0.8][1.2]
+        \dobase{1}{1+\rhoshift/2} \suenv
+    \end{diagram}
+\end{equation}
+This drastically simplifies the cost function Eq. \eqref{eq:full-update-cost} to
+\begingroup
+\newcommand{\drawABket}{
+    \drawTket{1}{1}{blue}
+    \drawTket{2}{1}{green}
+}
+\newcommand{\drawABbra}{
+    \drawTbra{1}{1}{blue}
+    \drawTbra{2}{1}{green}
+}
+\newcommand{\envwts}{
+    \wt{0.5}{1} \wt{1.5}{1} \wt{2.5}{1}
+    \wt{1}{0.5} \wt{1}{1.5}
+    \wt{2}{0.5} \wt{2}{1.5}
+}
+\begin{equation}
+    f(\tilde{T}_A, \tilde{T}_B, \tilde{\lambda}_1)
+    \approx \begin{diagram}[0.8][1]
+        \dobase{1}{1+\rhoshift/2} \suenv
+        \begin{scope}[opacity=0.3,shift={(\rhoshift,\rhoshift)}]
+            \drawABbra \envwts
+            \node[anchor=south east] 
+            at (1,1) {$\tilde{T}^\dagger_A$};
+            \node[anchor=south] 
+            at (1.5,1) {$\tilde{\lambda}_1$};
+            \node[anchor=south west] 
+            at (2,1) {$\tilde{T}^\dagger_B$};
+        \end{scope} 
+        \begin{scope}
+            \drawABket \envwts
+            \node[anchor=north east] 
+            at (1,1) {$\tilde{T}_A$};
+            \node[anchor=north] 
+            at (1.5,1) {$\tilde{\lambda}_1$};
+            \node[anchor=north west] 
+            at (2,1) {$\tilde{T}_B$};
+        \end{scope} 
+    \end{diagram} - \left(
+        \begin{diagram}[0.8][1]
+            \dobase{1}{1+\rhoshift/2} \suenv
+            \begin{scope}[opacity=0.3,shift={(\rhoshift,\rhoshift)}]
+                \drawABbra \envwts 
+                \node[anchor=south east] 
+                at (1,1) {$\tilde{T}^\dagger_A$};
+                \node[anchor=south] 
+                at (1.5,1) {$\tilde{\lambda}_1$};
+                \node[anchor=south west] 
+                at (2,1) {$\tilde{T}^\dagger_B$};
+            \end{scope}
+            \begin{scope}
+                \drawABket \envwts \gatebond{1}{1}
+                \node[anchor=south] at (1.5,1) {$G$};
+            \end{scope} 
+        \end{diagram} + h.c.
+    \right) + \mathrm{const.}
+    \label{eq:simple-update-cost}
+\end{equation}
+\endgroup
+Then minimizing $f$ is equivalent to the low-rank approximation problem of the tensor $G$ with the surrounding weights $\lambda_2, \lambda_3, \lambda_4$ absorbed. It can be solved by SVD in the following steps: 
+\begin{enumerate}
+    \item The weights $\lambda_2, \lambda_3, \lambda_4$ surrounding the type-1 bond to be updated are absorbed into the old tensors $T_A$ and $T_B$:
+    \begin{equation}
+        \def\surround{
+            \draw[midarrow] (-1,0) -- (-0.5,0);
+            \draw[midarrow] (0.5,0) -- (1,0);
+            \draw[midarrow] (0,0.5) -- (0,1);
+            \draw[midarrow] (0,-1) -- (0,-0.5);
+        }
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{blue}
+            \node[anchor=north west] at (0,0) {$T_A$};
+            \surround
+            \wt{-0.5}{0} \wt{0}{-0.5} \wt{0}{0.5}
+        \end{diagram} = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{blue}
+            \node[anchor=north east] at (0,0) {$A$};
+        \end{diagram}, \quad
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{green}
+            \node[anchor=north west] at (0,0) {$T_B$};
+            \surround
+            \wt{0.5}{0} \wt{0}{-0.5} \wt{0}{0.5}
+        \end{diagram} = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{green}
+            \node[anchor=north east] at (0,0) {$B$};
+        \end{diagram}.
+        \label{eq:absorb-wt}
+    \end{equation}
+    
+    \item To reduce SVD computational cost, we first apply QR and LQ decomposition to $\tilde{A}, \tilde{B}$ respectively as
+    \begin{equation}
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{blue}
+            \node[anchor=north east] at (0,0) {$A$};
+        \end{diagram} = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawXket{0}{0}{blue} \drawaR{0.5}{0}{blue};
+            \node[anchor=north east] at (0,0) {$X$};
+            \node[anchor=north] at (0.5,0) {$a_R$};
+        \end{diagram}, 
+        \quad
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{green}
+            \node[anchor=north east] at (0,0) {$B$};
+        \end{diagram} = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawXket{0}{0}{green} \drawaR{-0.5}{0}{green};
+            \node[anchor=north east] at (0,0) {$Y$};
+            \node[anchor=north] at (-0.5,0) {$b_L$};
+        \end{diagram}.
+    \end{equation}
+    The tensors $X, Y$ are unitary in the sense that
+    \begin{equation}
+        \begin{diagram}[0.8][1.2]
+            \dobase{0}{1+\rhoshift/2} 
+            \begin{scope}[opacity=0.3, shift={(\rhoshift,\rhoshift)}]
+                \drawXbra{1}{1}{blue}
+                \node[anchor=south west] at (1,1) {$X^\dagger$};
+            \end{scope}
+            \drawXket{1}{1}{blue}
+            \node[anchor=north east] at (1,1) {$X$};
+            \suenvA
+        \end{diagram} = \begin{diagram}[0.8][1.2]
+            \dobase{0}{\rhoshift/2}
+            \draw[midarrow] (0,0) -- (0.5,0);
+            \draw (0,0) -- ++(\rhoshift, \rhoshift);
+            \begin{scope}[opacity=0.3, shift={(\rhoshift,\rhoshift)}]
+                \draw[midarrowrev] (0,0) -- (0.5,0);
+            \end{scope}
+        \end{diagram}
+        \quad , \qquad
+        \begin{diagram}[0.8][1.2]
+            \dobase{2}{1+\rhoshift/2}
+            \begin{scope}[opacity=0.3, shift={(\rhoshift,\rhoshift)}]
+                \drawXbra{2}{1}{green}
+                \node[anchor=south west] at (2,1) {$Y^\dagger$};
+            \end{scope}
+            \drawXket{2}{1}{green} 
+            \node[anchor=north east] at (2,1) {$Y$};
+            \suenvB
+        \end{diagram} = \begin{diagram}[0.8][1.2]
+            \dobase{0}{\rhoshift/2}
+            \draw[midarrow] (0,0) -- (0.5,0);
+            \draw (0.5,0) -- ++(\rhoshift, \rhoshift);
+            \begin{scope}[opacity=0.3, shift={(\rhoshift,\rhoshift)}]
+                \draw[midarrowrev] (0,0) -- (0.5,0);
+            \end{scope}
+            \pmat{0.5+\rhoshift/2}{\rhoshift/2}
+        \end{diagram}
+    \end{equation}
+    The gate $g_{ij}$ now acts on the 3-leg tensors $a_R$ and $b_L$ as \cite{Phien2015}
+    \begin{equation}
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{blue}
+            \drawTket{1}{0}{green}
+            \wt{0.5}{0}
+            \node[anchor=north east] at (0,0) {$T_A$};
+            \node[anchor=north] at (0.5,0) {$\lambda_1$};
+            \node[anchor=north west] at (1,0) {$T_B$};
+            \drawgate
+        \end{diagram} = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawXket{-0.5}{0}{blue} \drawaR{0}{0}{blue}
+            \drawaR{1}{0}{green} \drawXket{1.5}{0}{green}
+            \wt{0.5}{0}
+            \node[anchor=north east] at (-0.5,0) {$X$};
+            \node[anchor=north] at (0,0) {$a_R$};
+            \node[anchor=north] at (0.5,0) {$\lambda_1$};
+            \node[anchor=north] at (1,0) {$b_L$};
+            \node[anchor=north west] at (1.5,0) {$Y$};
+            \drawgate
+        \end{diagram}. 
+    \end{equation}
+    Then we perform SVD, obtaining the updated weight $\tilde{\lambda}_1$ and 3-leg tensors $\tilde{a}_R$, and $\tilde{b}_L$ as
+    \begin{equation}
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawaR{0}{0}{blue} \drawaR{1}{0}{green}
+            \wt{0.5}{0}
+            \node[anchor=north] at (0,0) {$a_R$};
+            \node[anchor=north] at (0.5,0) {$\lambda_1$};
+            \node[anchor=north] at (1,0) {$b_L$};
+            \drawgate
+            \draw[dashed, red] (0.2,-0.3) -- ++(1.5,1.5);
+        \end{diagram}
+        = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawaR{0}{0}{blue} \drawaR{1}{0}{green}
+            \wt{0.5}{0}
+            \node[anchor=north] at (0,0) {$\tilde{a}_R$};
+            \node[anchor=north] at (0.5,0) {$\tilde{\lambda}_1$};
+            \node[anchor=north] at (1,0) {$\tilde{b}_L$};
+        \end{diagram}. 
+    \end{equation}
+    
+    \item To control the virtual bond dimension, we truncate the new weight $\tilde{\lambda}_1$ by keeping only the largest $D$ singular values. 
+    Here, $D$ can be different from the virtual bond dimension $D_0$ of the initial state $\ket{\psi_0}$. 
+    Note that the singular values of both the even and odd sectors are sorted together. 
+    The even (or odd) dimension $D_e$ (or $D_o$) of the virtual index ($D_e+D_o = D$) is the number of these $D$ singular values that come from the even (or odd) sector of $\Lambda$. 
+    
+    \item The new $\tilde{\lambda}_1$ is normalized so that the maximum singular value is $1$. 
+    The new $\tilde{a}_R, \tilde{b}_L$ tensors are absorbed back into $X, Y$ to produce the new $\tilde{A}, \tilde{B}$ tensors
+    \begin{equation}
+        \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawXket{-0.5}{0}{blue} \drawaR{0}{0}{blue}
+            \drawaR{1}{0}{green} \drawXket{1.5}{0}{green}
+            \wt{0.5}{0}
+            \node[anchor=north east] at (-0.5,0) {$X$};
+            \node[anchor=north] at (0,0) {$\tilde{a}_R$};
+            \node[anchor=north] at (0.5,0) {$\tilde{\lambda}_1$};
+            \node[anchor=north] at (1,0) {$\tilde{b}_L$};
+            \node[anchor=north west] at (1.5,0) {$Y$};
+        \end{diagram} = \begin{diagram}[0.8][1.5]
+            \dobase{0}{0}
+            \drawTket{0}{0}{blue}
+            \drawTket{1}{0}{green}
+            \wt{0.5}{0}
+            \node[anchor=north east] at (0,0) {$\tilde{A}$};
+            \node[anchor=north] at (0.5,0) {$\tilde{\lambda}_1$};
+            \node[anchor=north west] at (1,0) {$\tilde{B}$};
+        \end{diagram}.
+    \end{equation}
+    
+    \item The absorbed environment weights $\lambda_2, \lambda_3, \lambda_4$ are then restored by reversing Eq. \eqref{eq:absorb-wt} to obtain the updated tensors $\tilde{T}_A, \tilde{T}_B$. 
+
+    \item Steps $1$ to $5$ are repeated for each of the four types of bonds. 
+\end{enumerate}
+\endgroup
+
+The update stops when the change of the averaged weight is sufficiently small, or more precisely,
+\begin{equation}
+    \delta \Lambda(n)
+    \equiv \frac{1}{D} \sum_{i=1}^D |
+        \lambda^{(n)}_i
+        - \lambda^{(n-1)}_i
+    | \lesssim 10^{-10},
+\end{equation}
+where $\lambda^{(n)}_i$ is the $i$-th averaged weight after the $n$-th round of simple update.
+
+\end{document}

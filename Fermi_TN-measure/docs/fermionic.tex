@@ -1,0 +1,1376 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=2cm, footnotesep=1cm]{geometry}
+\input{../preamble.tex}
+% \renewcommand{\cite}[1]{}
+\graphicspath{{./images/}}
+
+\begin{document}
+
+\section{Fermionic tensor network}
+\label{sec:fermionic-tensors}
+
+Ordinary tensor network algorithms cannot be directly applied to fermion systems because of the anti-commutating property of fermionic degrees of freedom. 
+To address this issue, several equivalent approaches have been developed in the literature. 
+Here we explain the formalism based on \emph{super vector spaces} \cite{Bultinck2017,Bultinck20172,Mortier2024}, which allows for a natural incorporation of fermionic degrees of freedom into the tensor network. 
+The generalization of various algorithms to fermion systems is just a straightforward replacement of ordinary tensor and operations by their fermionic counterparts.
+
+\subsection{Super vector spaces} 
+
+The states of a fermion system form a \emph{super vector space}, which is defined as objects of the \emph{category of super vector spaces} \cite{Varadarajan2004}.
+The objects are $\Z_2$-graded vector spaces $V$ (in practice the underlying number field is $\C$) that can be decomposed as the direct sum of two subspaces labelled by 0 and 1:
+\begin{equation}
+    V = V_0 \oplus V_1.
+\end{equation}
+Vectors in $V_0$ or $V_1$ are called \emph{homogeneous}, and are said to have \emph{even (0) or odd (1) parity} respectively. The parity of a homogeneous vector $v$ will be denoted as $|v|$. A vector $v \in V$ will also be denoted by a ket-vector as $\ket{v}$. 
+The dimensions of $V_0$ or $V_1$ are called the \emph{even} or \emph{odd} dimension of $V$, respectively. 
+    
+The morphisms from $V$ to $W$ are linear maps $A: V \to W$ that preserve the $\Z_2$-grading (called \emph{parity-preserving maps}), i.e. 
+\begin{equation}
+    A(V_0) \subseteq W_0, \quad
+    A(V_1) \subseteq W_1.
+\end{equation} 
+There are also maps that swaps the grading, called the \emph{parity-swapping maps}, i.e. 
+\begin{equation}
+    A(V_0) \subseteq W_1, \quad
+    A(V_1) \subseteq W_0.
+\end{equation} 
+Linear maps that mix the even and odd parity vectors also exist, but they are usually irrelevant to physics. 
+Two super vector spaces are \emph{isomorphic} if there is a parity-preserving \emph{bijective map} between them. If they are both finite-dimensional, then they are isomorphic if and only if they have the same even and odd dimensions. 
+
+The \emph{tensor product} $\otimes$ of super vector spaces is still associative:
+\begin{equation}
+    \forall u \in U, v \in V, w \in W:
+    \quad
+    (u \otimes v) \otimes w
+    = u \otimes (v \otimes w).
+\end{equation}
+However, for two homogeneous vectors $v \in V, w \in W$, 
+\begin{equation}
+    v \otimes w = 
+    (-1)^{|v||w|} w \otimes v.
+    \label{eq:fermion-sign}
+\end{equation}
+The minus sign accounts for the anti-commutativity of fermions. In addition, $c_{V,W} c_{W,V} = 1$. It is this property \emph{between} two super vector spaces that distinguishes them from ordinary $\Z_2$-graded vector spaces. 
+
+In practice, we always assume that the super vector spaces are finite dimensional, and equipped with the usual Hermitian inner product $\braket{\cdot | \cdot}: V \times V \to \C$, defined in the same way as for an ordinary vector space over $\C$. 
+
+\subsubsection{Dual spaces and inner product of two tensors}
+
+The \emph{dual super vector space} $V^*$ is the super vector space of all linear functions $\phi: V \to \C$. 
+The subspace $V^*_0$ (or $V^*_1$) contains linear functions that evaluates to 0 on $V_1$ (or $V_0$). 
+With the inner product of $V$, there is a canonical anti-linear map from $V \to V^*$ that defines the dual vectors as
+\begin{gather}
+    v \mapsto v^*, \quad
+    v^*(w) = \braket{v|w}
+    \quad (\forall w \in V), 
+    \\
+    \forall \alpha_1, \alpha_2 \in \C, 
+    v_1, v_2 \in V: \quad
+    (\alpha_1 v_1 + \alpha_2 v_2)^*
+    = \bar{\alpha}_1 v^*_1
+    + \bar{\alpha}_2 v^*_2.
+\end{gather}
+The dual vector $v^*$ is also denoted as a bra-vector $\bra{v}$. The inner product $V$ also induces an inner product of $V^*$: for $v^*, w^* \in V^*$, their inner product is
+\begin{equation}
+    \braket{v^* | w^*} 
+    = \braket{w|v} = \overline{\braket{v|w}}.
+\end{equation}
+To further generalize, the tensor product space $V \otimes W^* \otimes \cdots$ also has an inner product defined as
+\begin{equation}
+    \braket{
+        v_1 \otimes w^*_1 \otimes \cdots | 
+        v_2 \otimes w^*_2 \otimes \cdots
+    } = \braket{v_1 | v_2}
+    \braket{w_2 | w_1} \cdots.
+    \label{eq:tensor-inner-product}
+\end{equation}
+Finally, if $V \equiv V_1 \otimes \cdots \otimes V_n$, then its dual is
+\begin{equation}
+    V^* = V^*_1 \otimes \cdots \otimes V^*_n
+\end{equation}
+
+\subsection{Fermionic tensors} 
+
+A \emph{fermionic tensor} $A$ of rank-$(m,n)$ is an element in the tensor product of $m$ super vector spaces (denoted as $V_1, ..., V_m$) and $n$ dual super vector spaces (denoted as $W^*_1, ..., W^*_n$):
+\begin{equation}
+    A \in V_1 \otimes \cdots \otimes V_m
+    \otimes W^*_1 \otimes \cdots \otimes W^*_n
+\end{equation}
+In practice, one chooses an orthonormal basis for each (dual) vector space, so that a tensor can be expressed as a linear combination of the tensor product of these basis vectors:
+\begin{equation}
+    A = A_{
+        \alpha_1 ... \alpha_m
+        \beta_1 ... \beta_n
+    }
+    \ket{\alpha_1} \cdots \ket{\alpha_m}
+    \bra{\beta_1} \cdots \bra{\beta_n}
+    \label{eq:tensor-A}
+\end{equation}
+Here summation over repeated indices is implied, and $\alpha_i$ (or $\beta_i$) labels the (homogeneous) basis vectors in $V_i$ (or $W_i$). The complex numbers $A_{\alpha_1 ... \alpha_m \beta_1 ... \beta_n}$ are called \emph{components} of the tensor $A$ under the chosen basis. The order of the tensor product can be changed using Eq. \eqref{eq:fermion-sign}; for example, we can swap the first and the second indices as
+\begin{equation}
+    A = \Big[(-1)^{|\alpha_1| |\alpha_2|} A_{
+        \alpha_1 \alpha_2 \alpha_3 ... 
+        \alpha_m \beta_1 ... \beta_n
+    }\Big]
+    \ket{\alpha_2} \ket{\alpha_1}
+    \cdots \ket{\alpha_m}
+    \bra{\beta_1} \cdots \bra{\beta_n}
+    \label{eq:tensor-A-transpose}
+\end{equation}
+Tensors only differing by a permutation of indices are regarded as the same. Graphically, a tensor is represented as a blob with legs as its indices. Legs corresponding to vectors (or dual vectors) are drawn with \emph{incoming} (or \emph{outgoing}) arrows: 
+\footnote{
+    This choice matches the Grassmann tensor formalism \cite{Gu2013}. 
+    In literatures using the super vector space formalism (e.g. Ref. \citenum{Mortier2024}), the arrow direction is opposite.
+}
+\begin{equation}
+    A = \begin{diagram}[0.8]
+        \dobase{0}{0}
+        \bloba{0}{0}{135,180,225}{-30,30}{$A$}
+        \node at (-1.3,1.3) {$\alpha_1$};
+        \node at (-1.8,0) {$\alpha_2$};
+        \node[rotate=20] at (-1.6,-0.6) {$\vdots$};
+        \node at (-1.3,-1.3) {$\alpha_m$};
+        \node at (1.6,0.8) {$\beta_1$};
+        \node at (1.6,-0.8) {$\beta_n$};
+        \node at (1.6,0) {$\vdots$};
+    \end{diagram}
+\end{equation}
+The index labels are usually omitted. If the tensor $A$ further satisfies
+\begin{equation}
+    A_{\alpha_1 ... \alpha_m \beta_1 ... \beta_n}
+    = 0 \quad \text{when} \quad
+    |\alpha_1| + \cdots + |\alpha_m|
+    + |\beta_1| + \cdots + |\beta_n|
+    = 0 \ \text{or} \ 1 \pmod{2}
+\end{equation}
+then we say $A$ has \emph{odd} (or \emph{even}) parity, denoted as $|A| = 0$ or $1$. 
+
+\subsubsection{Contraction of fermionic tensors}
+
+For a super vector space $V$ and its dual $V^*$, the \emph{contraction} map $\mathcal{C}$ is defined as
+\begin{equation}
+    \mathcal{C}:  
+    V^* \otimes V \to \C, \quad
+    \bra{i} \ket{j}
+    \mapsto \braket{i|j} = \delta_{ij}
+    \label{eq:contraction}
+\end{equation}
+Due to the fermionic sign Eq. \eqref{eq:fermion-sign}, we can also define
+\begin{equation}
+    \tilde{\mathcal{C}}: 
+    V \otimes V^* \to \C, \quad
+    \ket{i} \bra{j}
+    \mapsto (-1)^{|i||j|} \braket{j|i}
+    = (-1)^{|i|} \delta_{ij}
+    \label{eq:contraction2}
+\end{equation}
+In the following we use $\mathcal{C}$ to refer to both kinds of contraction. The generalization to the contraction of many super vector spaces with their duals is shown in the following example. 
+Consider two fermionic tensors
+\begin{equation}
+\begin{aligned}
+    A = A_{\alpha_1 ... \alpha_4}
+    \bra{\alpha_1} \ket{\alpha_2}
+    \ket{\alpha_3} \bra{\alpha_4},
+    , \quad
+    B = B_{\beta_1 ... \beta_4}
+    \bra{\beta_1} \ket{\beta_2}
+    \bra{\beta_3} \ket{\beta_4}.
+\end{aligned}
+\end{equation}
+Suppose we contract indices 3, 4 of $A$ with indices 1, 2 of $B$, which is calculated as
+\begin{align}
+    T \equiv \mathcal{C}(AB)
+    &= \mathcal{C}\Big[
+        A_{\alpha_1 ... \alpha_4}
+        \bra{\alpha_1} \ket{\alpha_2}
+        {\color{blue}\ket{\alpha_3}}
+        {\color{green}\bra{\alpha_4}}
+        \cdot
+        B_{\beta_1 ... \beta_4}
+        {\color{blue}\bra{\beta_1}}
+        {\color{green}\ket{\beta_2}}
+        \bra{\beta_3} \ket{\beta_4}
+    \Big]
+    \nonumber \\
+    &= \mathcal{C}\Big[
+        A_{\alpha_1 ... \alpha_4}
+        B_{\beta_1 ... \beta_4}
+        (-1)^{(|\alpha_3|+|\alpha_4|)|\beta_1|}
+        {\color{blue}\bra{\beta_1}}
+        {\color{blue}\ket{\alpha_3}}
+        {\color{green}\bra{\alpha_4}}
+        {\color{green}\ket{\beta_2}}
+    \Big]
+    \bra{\alpha_1} \ket{\alpha_2}
+    \bra{\beta_3} \ket{\beta_4}
+    \nonumber \\
+    &= \sum_{\mu,\nu}
+    A_{\alpha_1 \alpha_2 \mu \nu}
+    B_{\mu \nu \beta_3 \beta_4}
+    (-1)^{(|\mu|+|\nu|)|\mu|}
+    \bra{\alpha_1} \ket{\alpha_2}
+    \bra{\beta_3} \ket{\beta_4}
+    \nonumber \\
+    &\equiv T_{\alpha_1 \alpha_2 \beta_3 \beta_4}
+    \bra{\alpha_1} \ket{\alpha_2}
+    \bra{\beta_3} \ket{\beta_4}. 
+    \label{eq:contract-AB}
+\end{align}
+The contraction is graphically represented as
+\begin{equation}
+\begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{2}{$T$}
+    \lineHa{-0.5}{-1.5}{0.5}
+    \lineHa{0.5}{1.5}{0.5}
+    \lineHa{-1.5}{-0.5}{-0.5}
+    \lineHa{1.5}{0.5}{-0.5}
+    \node at (-1,0.9) {$\alpha_1$};
+    \node at (-1,-0.9) {$\alpha_2$};
+    \node at (1,0.9) {$\beta_3$};
+    \node at (1,-0.9) {$\beta_4$};
+\end{diagram} = \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{2}{$A$}
+    \rect{3}{0}{1}{2}{$B$}
+    \lineHa{-0.5}{-1.5}{0.5}
+    \lineHa[blue]{2.5}{0.5}{0.5}
+    \lineHa{3.5}{4.5}{0.5}
+    \lineHa{-1.5}{-0.5}{-0.5}
+    \lineHa[green]{0.5}{2.5}{-0.5}
+    \lineHa{4.5}{3.5}{-0.5}
+    \node at (-1,0.9) {$\alpha_1$};
+    \node at (-1,-0.9) {$\alpha_2$};
+    \node[color=blue] at (1.5,0.9) {$\mu$};
+    \node[color=green] at (1.5,-0.9) {$\nu$};
+    \node at (4,0.9) {$\beta_3$};
+    \node at (4,-0.9) {$\beta_4$};
+\end{diagram}. 
+\end{equation}
+If $A$, $B$ both have a definite parity, then $T$ has parity $|A| + |B|$ (mod 2). In general, if a tensor $T$ is the contraction of several tensors $A, B, C, ...$ with a definite parity, then 
+\begin{equation}
+    |T| = |A| + |B| + |C| + \cdots \pmod{2}. 
+\end{equation}
+In general, the contraction result depends on the order of tensors. In general $\mathcal{C}(BA) \ne \mathcal{C}(AB)$. 
+However, if both $A$ and $B$ have a definite parity, then
+\begin{equation}
+    \mathcal{C}(AB) = (-1)^{|A||B|} \mathcal{C}(BA).
+\end{equation}
+The contraction of many fermionic tensors is independent of contraction order only when all tensors have definite parity, and no more then one tensor has even parity. 
+
+\subsubsection{Linear maps as tensors}
+
+A (multi-)linear map can be represented as a tensor. For example, consider a linear map
+\begin{equation}
+    T: \ V_1 \otimes V_2 \to W_1 \otimes W_2, 
+    \quad
+    T(\ket{\nu_1} \ket{\nu_2})
+    = \ket{\omega_1} \ket{\omega_2}
+    T_{\omega_1 \omega_2, \nu_1 \nu_2}.
+    \label{eq:T-map}
+\end{equation}
+Here we use a comma to separate input (domain) and output (codomain) indices. To simplify notation, we often group the codomain indices and the domain indices as 
+\begin{equation}
+    \bs{\omega} = (\omega_1, \omega_2), 
+    \quad
+    \bs{\nu} = (\nu_1, \nu_2)
+    \quad \Rightarrow \quad 
+    T_{\omega_1 \omega_2, \nu_1 \nu_2}
+    = T_{\bs{\omega}\bs{\nu}}. 
+\end{equation}
+We define the tensor $T$ corresponding to the map $T$ as
+\begin{equation}
+\begin{aligned}
+    T &= T_{\bs{\omega} \bs{\nu}}
+    \ket{\omega_1} \ket{\omega_2}
+    \bra{\nu_2} \bra{\nu_1}
+    \\
+    &\in W_1 \otimes W_2 \otimes
+    V^*_2 \otimes V^*_1
+\end{aligned} \quad \text{represented by} \quad
+\begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{3}{$T$}
+    \draw[midarrow] (-1.5,1) -- (-0.5,1);
+    \draw[midarrow] (-1.5,-1) -- (-0.5,-1);
+    \draw[midarrow] (0.5,1) -- (1.5,1);
+    \draw[midarrow] (0.5,-1) -- (1.5,-1);
+    \node at (-1,0.6) {$\omega_1$};
+    \node at (-1,-0.6) {$\omega_2$};
+    \node at (1,0.6) {$\nu_1$};
+    \node at (1,-0.6) {$\nu_2$};
+\end{diagram}
+\label{eq:T-tensor}
+\end{equation}
+Note that the dual of the domain is appended with \emph{reversed order} of tensor product. 
+Parity-preserving (or parity-swapping) maps are represented by tensors with a even (or odd) parity. 
+The effect of $T$ on any vector $v \in V_1 \otimes V_2$ can be expressed as the contraction of the tensor $T$ and $v$:
+\begin{equation}
+T(v) = \mathcal{C}(T v) 
+= \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{3}{$T$}
+    \mat[0.3]{1.5}{0}{$v$}
+    \draw[midarrow] (-1.5,1) -- (-0.5,1);
+    \draw[midarrow] (-1.5,-1) -- (-0.5,-1);
+    \draw[midarrow, color=green] 
+    (0.5,1) -- (1.5,1) -- (1.5,0.3);
+    \draw[midarrow, color=blue] 
+    (0.5,-1) -- (1.5,-1) -- (1.5,-0.3);
+\end{diagram} \ \begin{aligned}
+    &= \mathcal{C}\Big[
+        T_{\bs{\omega} \bs{\nu}}
+        \ket{\omega_1} \bra{\omega_2}
+        {\color{blue} \bra{\nu_2}}
+        {\color{green} \bra{\nu_1}}
+        v_{\bs{\nu}'}
+        {\color{green} \ket{\nu'_1}}
+        {\color{blue} \ket{\nu'_2}}
+    \Big]
+    \\
+    &= \sum_{\bs{\nu}}
+    T_{\bs{\omega} \bs{\nu}} v_{\bs{\nu}}
+    \ket{\omega_1} \ket{\omega_2}. 
+\end{aligned}
+\end{equation}
+In graphical representation, we conventionally put the argument of the linear map at the right (or top) of the map. In particular, the \emph{identity operator} $1_V: V \to V$ on a super vector space $V$ corresponds to the tensor
+\begin{equation}
+\begin{aligned}
+    I &= \delta_{\nu \nu'}
+    \ket{\nu} \bra{\nu'}
+    \\
+    &\in V \otimes V^*
+\end{aligned} \quad \text{represented by} 
+\quad \begin{diagram}
+    \dobase{0}{0}
+    \lineHa{0.3}{1}{0}
+    \lineHa{-1}{-0.3}{0}
+    \mat[0.3]{0}{0}{$I$}
+\end{diagram} \quad \text{or simply}
+\quad \begin{diagram}
+    \dobase{0}{0}
+    \lineHa{-0.5}{0.5}{0}
+\end{diagram}. 
+\label{eq:identity-tensor}
+\end{equation}
+However, complications arise when dual spaces are involved in the domain of a linear map. Suppose we modify the map $T$ to
+\begin{equation}
+    T: \ {\color{red}V^*_1} \otimes V_2 
+    \to W_1 \otimes W^*_2, 
+    \quad
+    T({\color{red}\bra{\nu_1}} \ket{\nu_2})
+    = \ket{\omega_1} \bra{\omega_2}
+    T_{\omega_1 \omega_2, \nu_1 \nu_2}.
+    \label{eq:T-map2}
+\end{equation}
+which corresponds to the tensor
+\begin{equation}
+\begin{aligned}
+    T &= T_{\bs{\omega} \bs{\nu}}
+    \ket{\omega_1} \bra{\omega_2}
+    \bra{\nu_2} {\color{red}\ket{\nu_1}}
+    \\
+    &\in W_1 \otimes W^*_2 \otimes
+    V^*_2 \otimes {\color{red}V_1}
+\end{aligned} \quad \text{represented by} \quad
+\begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{3}{$T$}
+    \draw[midarrow] (-1.5,1) -- (-0.5,1);
+    \draw[midarrow] (-0.5,-1) -- (-1.5,-1);
+    \draw[midarrow, color=red] (1.5,1) -- (0.5,1);
+    \draw[midarrow] (0.5,-1) -- (1.5,-1);
+    \node at (-1,0.6) {$\omega_1$};
+    \node at (-1,-0.6) {$\omega_2$};
+    \node[color=red] at (1,0.6) {$\nu_1$};
+    \node at (1,-0.6) {$\nu_2$};
+\end{diagram}. 
+\label{eq:T-tensor2}
+\end{equation}
+However, when it contracts with a vector $v \in V^*_1 \otimes V_2$, an extra fermion sign occurs:
+\begin{equation}
+\mathcal{C}(T v)
+= \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{3}{$T$}
+    \mat[0.3]{1.5}{0}{$v$}
+    \draw[midarrow] (-1.5,1) -- (-0.5,1);
+    \draw[midarrow] (-0.5,-1) -- (-1.5,-1);
+    \draw[midarrow, color=red] 
+    (1.5,0.3) -- (1.5,1) -- (0.5,1);
+    \draw[midarrow, color=blue] 
+    (0.5,-1) -- (1.5,-1) -- (1.5,-0.3);
+\end{diagram} \ \begin{aligned}
+    &= \mathcal{C}\Big[
+        T_{\bs{\omega} \bs{\nu}}
+        \ket{\omega_1} \bra{\omega_2}
+        {\color{blue} \bra{\nu_2}}
+        {\color{red} \ket{\nu_1}}
+        v_{\bs{\nu}'}
+        {\color{red} \bra{\nu'_1}}
+        {\color{blue} \ket{\nu'_2}}
+    \Big]
+    \\
+    &= \sum_{\bs{\nu}} (-1)^{|\nu_1|}
+    T_{\bs{\omega} \bs{\nu}} v_{\bs{\nu}}
+    \ket{\omega_1} \ket{\omega_2}
+    \ne T(v)
+\end{aligned}
+\end{equation}
+To express $T(v)$ as a contraction of the tensors $T$, $v$, we need to cancel the fermion sign using the \emph{parity tensor} $P$, which corresponds to the identity operator on the \emph{dual} space $V^*$:
+\begingroup
+\def\drawvp{
+    \mat[0.3]{1.5}{1}{\small $P$}
+    \mat[0.3]{2.5}{0}{$v$}
+    \draw[color=green] (2.5,0.3) -- (2.5,1);
+    \draw[midarrow, color=green] 
+    (2.5,1) -- (1.8,1);
+    \draw[midarrow, color=red] 
+    (1.2,1) -- (0.5,1);
+    \draw[midarrow, color=blue] 
+    (0.5,-1) -- (2.5,-1) -- (2.5,-0.3);
+}
+\begin{equation}
+    P = \delta_{\omega \nu}
+    \bra{\omega} \ket{\nu}
+    \in V^* \otimes V
+    \quad \text{represented by} 
+    \quad \begin{diagram}
+        \dobase{0}{0}
+        \lineHa{1}{0.3}{0}
+        \lineHa{-0.3}{-1}{0}
+        \mat[0.3]{0}{0}{$P$}
+    \end{diagram}
+    \label{eq:parity-tensor}
+\end{equation}
+The contraction of $P$ with the dual index of $v$ is
+\begin{equation}
+\mathcal{C}(P v)
+= \begin{diagram}[0.8]
+    \dobase{0.5}{0}
+    \drawvp
+\end{diagram} \ \begin{aligned}
+    &= \delta_{\nu_1 \gamma} 
+    {\color{red} \bra{\nu_1}}
+    {\color{green} \ket{\gamma}}
+    v_{\gamma' \nu_2}
+    {\color{green} \bra{\gamma'}}
+    {\color{blue} \ket{\nu_2}}
+    \\
+    &= \sum_\gamma 
+    \delta_{\nu_1 \gamma} 
+    v_{\gamma \nu_2} (-1)^{|\gamma|}
+    {\color{red} \bra{\nu_1}}
+    {\color{blue} \ket{\nu_2}}
+    \\
+    &= (-1)^{|\nu_1|} v_{\nu_1 \nu_2}
+    {\color{red} \bra{\nu_1}}
+    {\color{blue} \ket{\nu_2}}. 
+\end{aligned}
+\end{equation}
+Therefore, $T(v)$ can be represented as
+\begin{equation}
+    T(v) = \begin{diagram}[0.8]
+        \dobase{0}{0} \drawvp
+        \rect{0}{0}{1}{3}{$T$}
+        \draw[midarrow] (-1.5,1) -- (-0.5,1);
+        \draw[midarrow] (-0.5,-1) -- (-1.5,-1);
+    \end{diagram}. 
+    \label{eq:tv-withp}
+\end{equation}
+\endgroup
+
+\subsubsection{Composition of linear maps}
+
+The composition of linear maps has the same subtlety as the action of linear maps on vectors. We first consider the most straightforward example when the domains of maps do not involve dual spaces. Define two linear operators
+\begin{equation}
+\begin{aligned}
+    A: V_1 \otimes V_2 &\to W_1 \otimes W_2, 
+    &\quad
+    A(\ket{\nu_1} \ket{\nu_2})
+    &= \ket{\omega_1} \ket{\omega_2}
+    A_{\bs{\omega} \bs{\nu}}
+    \\
+    B: U_1 \otimes U_2 &\to V_1 \otimes V_2,
+    &\quad
+    B(\ket{\mu_1}\ket{\mu_2})
+    &= \ket{\nu_1} \ket{\nu_2} 
+    B_{\bs{\nu} \bs{\mu}}
+\end{aligned}
+\end{equation}
+The composed map $AB: U_1 \otimes U_2 \to W_1 \otimes W_2$ is
+\begin{equation}
+    AB(\ket{\mu_1}\ket{\mu_2})
+    = \ket{\omega_1} \ket{\omega_2}
+    A_{\bs{\omega} \bs{\nu}} B_{\bs{\nu} \bs{\mu}}
+\end{equation}
+Therefore, the tensor of $AB$ is equal to the contraction of the tensors of $A$ and $B$:
+\begin{equation}
+\begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{2}{$AB$}
+    \lineHa{-1.5}{-0.5}{0.5}
+    \lineHa{0.5}{1.5}{0.5}
+    \lineHa{-1.5}{-0.5}{-0.5}
+    \lineHa{0.5}{1.5}{-0.5}
+    \node at (-1,0.9) {$\omega_1$};
+    \node at (-1,-0.9) {$\omega_2$};
+    \node at (1,0.9) {$\mu_1$};
+    \node at (1,-0.9) {$\mu_2$};
+\end{diagram} = \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{2}{$A$}
+    \rect{2}{0}{1}{2}{$B$}
+    \lineHa{-1.5}{-0.5}{0.5}
+    \lineHa{0.5}{1.5}{0.5}
+    \lineHa{2.5}{3.5}{0.5}
+    \lineHa{-1.5}{-0.5}{-0.5}
+    \lineHa{0.5}{1.5}{-0.5}
+    \lineHa{2.5}{3.5}{-0.5}
+    \node at (-1,0.9) {$\omega_1$};
+    \node at (-1,-0.9) {$\omega_2$};
+    \node at (1,0.9) {$\nu_1$};
+    \node at (1,-0.9) {$\nu_2$};
+    \node at (3,0.9) {$\mu_1$};
+    \node at (3,-0.9) {$\mu_2$};
+\end{diagram}. 
+\end{equation}
+However, suppose we modify $A$, $B$ to
+\begin{equation}
+\begin{aligned}
+    A: V_1 \otimes {\color{red} V^*_2} 
+    &\to W_1 \otimes W_2, 
+    &\quad
+    A(\ket{\nu_1} {\color{red}\bra{\nu_2}})
+    &= \ket{\omega_1} \ket{\omega_2}
+    A_{\bs{\omega} \bs{\nu}}
+    \\
+    B: U_1 \otimes U_2 
+    &\to V_1 \otimes {\color{red} V^*_2},
+    &\quad
+    B(\ket{\mu_1}\ket{\mu_2})
+    &= \ket{\nu_1} {\color{red}\bra{\nu_2}} 
+    B_{\bs{\nu} \bs{\mu}}
+\end{aligned}
+\end{equation}
+The codomain of $A$ (and the domain of $B$) now involves dual spaces. But the tensor elements of $AB$ are unchanged. Therefore, we need to insert the parity tensor $P$ when contracting the tensors of $A$ and $B$ to obtain the tensor of $AB$:
+\begin{equation}
+\begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{2}{$AB$}
+    \lineHa{-1.5}{-0.5}{0.5}
+    \lineHa{0.5}{1.5}{0.5}
+    \lineHa{-1.5}{-0.5}{-0.5}
+    \lineHa{0.5}{1.5}{-0.5}
+    \node at (-1,0.9) {$\omega_1$};
+    \node at (-1,-0.9) {$\omega_2$};
+    \node at (1,0.9) {$\mu_1$};
+    \node at (1,-0.9) {$\mu_2$};
+\end{diagram} = \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{2}{$A$}
+    \rect{3}{0}{1}{2}{$B$}
+    \lineHa{-1.5}{-0.5}{0.5}
+    \lineHa{0.5}{2.5}{0.5}
+    \lineHa{3.5}{4.5}{0.5}
+    \lineHa{-1.5}{-0.5}{-0.5}
+    \lineHa[red]{2.5}{1.8}{-0.5}
+    \mat[0.3]{1.5}{-0.5}{$P$}
+    \lineHa[red]{1.2}{0.5}{-0.5}
+    \lineHa{3.5}{4.5}{-0.5}
+    \node at (-1,0.9) {$\omega_1$};
+    \node at (-1,-0.9) {$\omega_2$};
+    \node at (1.5,0.9) {$\nu_1$};
+    \node[color=red] at (1.5,-1.1) {$\nu_2$};
+    \node at (4,0.9) {$\mu_1$};
+    \node at (4,-0.9) {$\mu_2$};
+\end{diagram}. 
+\label{eq:map-composition}
+\end{equation}
+
+\subsubsection{Hermitian conjugate of linear maps and tensors}
+
+The \emph{Hermitian conjugate (adjoint)} of a linear map $T: V \to W$ is a unique linear map $T^\dagger: W \to V$ that satisfies
+\begin{equation}
+    \forall v \in V, w \in W: \quad
+    \braket{T^\dagger w, v}
+    = \braket{w, T v} 
+    \label{eq:hermitian-conjugate-def}
+\end{equation}
+A linear map $T: V \to V$ (or its corresponding tensor) is called \emph{Hermitian} if $T^\dagger = T$. The following equality is still valid for linear maps on super vector spaces:
+\begin{equation}
+    (A B)^\dagger = B^\dagger A^\dagger
+\end{equation}
+Consider a concrete example. The Hermitian conjugate of the linear map $T$ in Eq. \eqref{eq:T-map2} is
+\begin{equation}
+    T^\dagger: \ W_1 \otimes W^*_2 
+    \to V^*_1 \otimes V_2
+    , \quad
+    T^\dagger(\ket{\omega_1} \bra{\omega_2})
+    = \bra{\nu_1} \ket{\nu_2}
+    T^\dagger_{\bs{\nu} \bs{\omega}}
+\end{equation}
+Eq. \eqref{eq:hermitian-conjugate-def} implies that the tensor components are given as usual by the conjugate transpose, 
+\begin{equation}
+    T^\dagger_{\bs{\nu} \bs{\omega}}
+    = \bar{T}_{\bs{\omega} \bs{\nu}}.
+\end{equation}
+The tensor of the map $T^\dagger$ is
+\begin{equation}
+\begin{aligned}
+    T^\dagger
+    &= T^\dagger_{\bs{\nu} \bs{\omega}}
+    \bra{\nu_1} \ket{\nu_2}
+    \ket{\omega_2} \bra{\omega_1}
+    \\
+    &= \bar{T}_{\bs{\omega} \bs{\nu}}
+    \bra{\nu_1} \ket{\nu_2}
+    \ket{\omega_2} \bra{\omega_1}
+    \\
+    &\in V^*_1 \otimes V_2
+    \otimes W_2 \otimes W^*_1
+\end{aligned} \quad \text{represented by} \quad
+\begin{diagram}[0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{1}{3}{$T^\dagger$}
+    \draw[midarrow] (-0.5,1) -- (-1.5,1);
+    \draw[midarrow] (-1.5,-1) -- (-0.5,-1);
+    \draw[midarrow] (0.5,1) -- (1.5,1);
+    \draw[midarrow] (1.5,-1) -- (0.5,-1);
+    \node at (-1,0.6) {$\nu_1$};
+    \node at (-1,-0.6) {$\nu_2$};
+    \node at (1,0.6) {$\omega_1$};
+    \node at (1,-0.6) {$\omega_2$};
+\end{diagram}
+\end{equation}
+Comparing with the tensor $T$ (Eq. \eqref{eq:T-tensor}), the tensor $T^\dagger$ is obtained by:
+\begin{itemize}
+    \setlength\itemsep{-0.2em}
+    \item taking the complex conjugate of tensor elements,
+    \item changing kets (or bras) to bras (or kets), and 
+    \item reversing the tensor product order. 
+\end{itemize}
+We can use this conversion rule to define the Hermitian conjugate of any tensor $A$ (Eq. \eqref{eq:tensor-A}):
+\begin{equation}
+    A^\dagger = \bar{A}_{
+        \alpha_1 ... \alpha_m
+        \beta_1 ... \beta_n
+    }
+    \ket{\beta_n} \cdots \ket{\beta_1}
+    \bra{\alpha_m} \cdots \bra{\alpha_1}
+    = \begin{diagram}[0.8]
+        \dobase{0}{0}
+        \bloba{0}{0}{-30,30}{135,180,225}{$A^\dagger$}
+        \node at (-1.3,1.3) {$\alpha_1$};
+        \node at (-1.8,0) {$\alpha_2$};
+        \node[rotate=20] at (-1.6,-0.6) {$\vdots$};
+        \node at (-1.3,-1.3) {$\alpha_m$};
+        \node at (1.6,0.8) {$\beta_1$};
+        \node at (1.6,-0.8) {$\beta_n$};
+    \end{diagram}
+\end{equation}
+
+\subsubsection{Graphical representation of inner products}
+
+Consider two tensors in $V_1 \otimes V^*_2 \otimes V_3$, 
+\begin{equation}
+    A = A_{\bs{\alpha}}
+    \ket{\alpha_1} \bra{\alpha_2} \ket{\alpha_3}
+    , \quad
+    B = B_{\bs{\alpha}}
+    \ket{\alpha_1} \bra{\alpha_2} \ket{\alpha_3}.
+\end{equation}
+Their inner product Eq. \eqref{eq:tensor-inner-product} is
+\begin{equation}
+    \braket{A|B}
+    = \bar{A}_{\bs{\alpha}} B_{\bs{\alpha}'}
+    \braket{\alpha_1|\alpha'_1}
+    \braket{\alpha'_2|\alpha_2}
+    \braket{\alpha_3|\alpha'_3}
+    = \bar{A}_{\alpha_1 \alpha_2 \alpha_3}
+    B_{\alpha_1 \alpha_2 \alpha_3}
+    \label{eq:inner-product-AB}
+\end{equation}
+To express it as tensor contraction, we need to insert the $P$ tensors on the dual indices of $B$. Then $\braket{A|B}$ is given by
+\begin{equation}
+    \braket{A|B} 
+    = \begin{diagram}[0.7][0.7]
+        \dobase{0}{0}
+        \tensor{0}{0}{$A^\dagger$}
+        \tensor{3}{0}{$B$}
+        \mat[0.3]{1.5}{0}{$P$}
+        \draw[midarrow] (2.5,0) to (1.8,0); 
+        \draw[midarrow] (1.2,0) to (0.5,0); 
+        \draw[midarrow] 
+        (0,0.5) to[out=90,in=90] (3,0.5);
+        \draw[midarrow] 
+        (0,-0.5) to[out=-90,in=-90] (3,-0.5);
+    \end{diagram}.
+\end{equation}
+
+\subsection{Unitarity of linear maps and their tensors}
+
+Let $T: V_1 \otimes \cdots \otimes V^*_n \to W^*_1 \otimes \cdots \otimes W_m$ be a linear map corresponding to the tensor
+\begin{equation}
+    T = T_{\bs{\omega} \bs{\nu}}
+    \bra{\omega_1} ... \ket{\omega_m}
+    \ket{\nu_n} ... \bra{\nu_1}
+    = \begin{diagram}[0.8]
+        \dobase{0}{0} 
+        \rect{0}{0}{0.6}{2.4}{$T$}
+        \lineHa{-0.3}{-1}{0.7}
+        \node at (-0.8,0.1) {$\vdots$};
+        \lineHa{-1}{-0.3}{-0.7}
+        \lineHa{0.3}{1}{0.7}
+        \node at (0.8,0.1) {$\vdots$};
+        \lineHa{1}{0.3}{-0.7}
+        \node at (-1.3,0.7) {$\omega_1$};
+        \node at (-1.3,-0.7) {$\omega_m$};
+        \node at (1.3,0.7) {$\nu_1$};
+        \node at (1.3,-0.7) {$\nu_n$};
+    \end{diagram}
+    \label{eq:tensor-T}
+\end{equation}
+where $\bs{\omega}$ (or $\bs{\nu}$) collectively stand for the codomain (or the domain) indices. It is called \emph{left unitary} if 
+\begin{equation}
+    T^\dagger T 
+    = 1_{V_1 \otimes \cdots \otimes V^*_n} 
+    \quad \text{or} \quad
+    T^\dagger_{\bs{\nu} \bs{\omega}}
+    T_{\bs{\omega} \bs{\nu}'}
+    = \bar{T}_{\bs{\omega} \bs{\nu}}
+    T_{\bs{\omega} \bs{\nu}'}
+    = \delta_{\bs{\nu} \bs{\nu}'}
+\end{equation}
+which is graphically expressed as
+\begin{equation}
+\begin{diagram}[0.8]
+    \dobase{0}{0} 
+    \mat[0.3]{0}{0.7}{$P$}
+    \rect{1.5}{0}{0.6}{2.4}{$T$}
+    \rect{-1.5}{0}{0.6}{2.4}{$T^\dagger$}
+    \lineHa{-2.5}{-1.8}{0.7}
+    \lineHa{-1.8}{-2.5}{-0.7}
+    \lineHa{1.2}{0.3}{0.7}
+    \lineHa{-0.3}{-1.2}{0.7}
+    \lineHa{-1.2}{1.2}{-0.7}
+    \lineHa{1.8}{2.5}{0.7}
+    \lineHa{2.5}{1.8}{-0.7}
+    \node at (0,0) {$\vdots$};
+\end{diagram} \ = \ \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \mat[0.3]{0}{0.7}{$I$}
+    \node at (0,0.1) {$\vdots$};
+    \mat[0.3]{0}{-0.7}{$P$}
+    \lineHa{-1}{-0.3}{0.7}
+    \lineHa{0.3}{1}{0.7}
+    \lineHa{1}{0.3}{-0.7}
+    \lineHa{-0.3}{-1}{-0.7}
+\end{diagram}
+\end{equation}
+Similarly, $T$ is called \emph{right unitary} if 
+\begin{equation}
+    T T^\dagger 
+    = 1_{W^*_1 \otimes \cdots \otimes W_m} 
+    \quad \text{or} \quad
+    T_{\bs{\omega} \bs{\nu}}
+    T^\dagger_{\bs{\nu} \bs{\omega}'}
+    = T_{\bs{\omega} \bs{\nu}}
+    \bar{T}_{\bs{\omega}' \bs{\nu}}
+    = \delta_{\bs{\omega} \bs{\omega}'}
+\end{equation}
+which is graphically expressed as
+\begin{equation}
+\begin{diagram}[0.8]
+    \dobase{0}{0} 
+    \mat[0.3]{0}{-0.7}{$P$}
+    \rect{1.5}{0}{0.6}{2.4}{$T^\dagger$}
+    \rect{-1.5}{0}{0.6}{2.4}{$T$}
+    \lineHa{-1.8}{-2.5}{0.7}
+    \lineHa{-2.5}{-1.8}{-0.7}
+    \lineHa{1.2}{0.3}{-0.7}
+    \lineHa{-0.3}{-1.2}{-0.7}
+    \lineHa{-1.2}{1.2}{0.7}
+    \lineHa{2.5}{1.8}{0.7}
+    \lineHa{1.8}{2.5}{-0.7}
+    \node at (0,0.2) {$\vdots$};
+\end{diagram} \ = \ \begin{diagram}[0.8]
+    \dobase{0}{0}
+    \mat[0.3]{0}{0.7}{$P$}
+    \node at (0,0.1) {$\vdots$};
+    \mat[0.3]{0}{-0.7}{$I$}
+    \lineHa{1}{0.3}{0.7}
+    \lineHa{-0.3}{-1}{0.7}
+    \lineHa{-1}{-0.3}{-0.7}
+    \lineHa{0.3}{1}{-0.7}
+\end{diagram}
+\end{equation}
+Finally, $T: U \to V$ is called \emph{unitary} if $U$ is isomorphic to $V$, and $T$ is both left and right unitary. 
+
+\subsection{Changing direction of arrows}
+
+Sometimes one wants to change the arrow direction on a bond of a tensor network for easier manipulation. This is done by unitary operators called \emph{flippers} \cite{Mortier2024}:
+\begin{equation}
+    f: V \to V^*, 
+    \quad \text{represented as tensor} \quad
+    \begin{diagram}
+        \dobase{0}{0}
+        \weight{0}{0}{$f$}
+        \lineHa{0.5}{1}{0}
+        \lineHa{-0.5}{-1}{0}
+    \end{diagram}
+\end{equation}
+The unitarity of $f$ means that
+\begin{align}
+    \begin{diagram}
+        \dobase{0}{0}
+        \lineHa{-2.5}{-2}{0}
+        \weight{-1.5}{0}{$f^\dagger$}
+        \lineHa{-0.3}{-1}{0}
+        \mat[0.3]{0}{0}{$P$}
+        \lineHa{1}{0.3}{0}
+        \weight{1.5}{0}{$f$}
+        \lineHa{2}{2.5}{0}
+    \end{diagram} &= \begin{diagram}
+        \dobase{0}{0} 
+        \mat[0.3]{0}{0}{$I$}
+        \lineHa{-1}{-0.3}{0}
+        \lineHa{0.3}{1}{0}
+    \end{diagram},
+    \\
+    \begin{diagram}
+        \dobase{0}{0}
+        \lineHa{-2}{-2.5}{0}
+        \weight{-1.5}{0}{$f$}
+        \lineHa{-1}{1}{0}
+        \weight{1.5}{0}{$f^\dagger$}
+        \lineHa{2.5}{2}{0}
+    \end{diagram} &= \begin{diagram}
+        \dobase{0}{0} 
+        \mat[0.3]{0}{0}{$P$}
+        \lineHa{-0.3}{-1}{0}
+        \lineHa{1}{0.3}{0}
+    \end{diagram}.
+\end{align}
+The choice of $f$ is not unique; the simplest one is
+\begin{equation}
+    f = \bra{\nu} \bra{\nu}
+    = \delta_{\nu \nu'} \bra{\nu} \bra{\nu'}. 
+\end{equation}
+Suppose that two tensors $A \in W \otimes V^*$ and $B \in V \otimes U^*$ are contracted as
+\begin{equation}
+    \mathcal{C}(AB) = \begin{diagram}
+        \dobase{0}{0}
+        \lineHa{-2.5}{-1.5}{0}
+        \tensor{-1}{0}{$A$}
+        \lineHa{-0.5}{0.5}{0}
+        \tensor{1}{0}{$B$}
+        \lineHa{1.5}{2.5}{0}
+        \node at (-2,0.3) {$\omega$};
+        \node at (0,0.3) {$\nu$};
+        \node at (2,0.3) {$\mu$};
+    \end{diagram}
+    \in W \otimes U^*.
+\end{equation}
+Then we transform the network as
+\begin{align}
+    \mathcal{C}(AB) &= \begin{diagram}
+        \dobase{0}{0}
+        \lineHa{-4.5}{-3.5}{0}
+        \tensor{-3}{0}{$A$}
+        \lineHa{-2.5}{-2}{0}
+        \weight{-1.5}{0}{$f^\dagger$}
+        \lineHa{-0.3}{-1}{0}
+        \mat[0.3]{0}{0}{$P$}
+        \lineHa{1}{0.3}{0}
+        \weight{1.5}{0}{$f$}
+        \lineHa{2}{2.5}{0}
+        \tensor{3}{0}{$B$}
+        \lineHa{3.5}{4.5}{0}
+        \node (A) at (-2.6,-0.8) 
+        {$\underbrace{\hspace{4cm}}$};
+        \node[below=0mm of A] {$A'$};
+        \node (B) at (1.9,-0.8) 
+        {$\underbrace{\hspace{5.6cm}}$};
+        \node[below=0mm of B] {$B'$};
+        \node at (-4,0.3) {$\omega$};
+        \node at (-2.25,0.3) {$\nu$};
+        \node at (-0.7,0.3) {$\nu_1$};
+        \node at (0.7,0.3) {$\nu_2$};
+        \node at (2.25,0.3) {$\nu'$};
+        \node at (4,0.3) {$\mu$};
+    \end{diagram}
+    \nonumber \\
+    &= \begin{diagram}
+        \dobase{0}{0}
+        \lineHa{-2.5}{-1.5}{0}
+        \tensor{-1}{0}{$A'$}
+        \lineHa{0.5}{-0.5}{0}
+        \tensor{1}{0}{$B'$}
+        \lineHa{1.5}{2.5}{0}
+        \node at (-2,0.3) {$\omega$};
+        \node at (0,0.3) {$\nu_1$};
+        \node at (2,0.3) {$\mu$};
+    \end{diagram}
+\end{align}
+The arrow direction between $A'$ and $B'$ is therefore opposite to that between $A$ and $B$. The tensor elements of $A'$, $B'$ are
+\begin{equation}
+    A' = A_{\omega \nu_1} \ket{\omega} \ket{\nu_1}
+    , \quad
+    B' = (-1)^{|\nu_1|}
+    B_{\nu_1 \mu} \bra{\nu_1} \bra{\mu}.
+\end{equation}
+We see that the elements of $A$ are unchanged, while elements of $B$ are simply multiplied by a fermion sign $(-1)^{|\nu_1|}$. Alternatively, one can also absorb $P$ into $A$, leading to
+\begin{equation}
+    A' = (-1)^{|\nu_2|} A_{\omega \nu_2} 
+    \ket{\omega} \ket{\nu_2}
+    , \quad
+    B' = B_{\nu_2 \mu} \bra{\nu_2} \bra{\mu}.
+\end{equation}
+
+\subsection{Decomposition of linear maps and tensors} 
+\label{sec:decomposition}
+
+In the generalization of tensor network algorithms to fermion systems, the most important part is to define \emph{decomposition} of linear maps and their tensors. 
+Suppose we want to decompose a map $T: V_1 \otimes \cdots V^*_n \to W^*_1 \otimes \cdots \otimes W_m$ into the composition of two maps
+\begin{equation}
+    A: U \to W^*_1 \otimes \cdots \otimes W_i, 
+    \quad
+    B: V_1 \otimes \cdots \otimes V^*_i \to U
+\end{equation}
+where $\dim U = \min(
+    \prod_{i=1}^n \dim V_n, 
+    \prod_{i=1}^m \dim W_m
+)$. 
+Then the tensor of $T$ can be recovered by contracting the tensors of $A$ and $B$:
+\begingroup
+\begin{equation}
+\def\leftlegs{
+    \lineHa{-0.3}{-1}{0.7}
+    \node at (-0.8,0.1) {$\vdots$};
+    \lineHa{-1}{-0.3}{-0.7}
+    \node at (-1.3,0.7) {$\omega_1$};
+    \node at (-1.3,-0.7) {$\omega_m$};
+}
+\def\rightlegs{
+    \lineHa{0.3}{1}{0.7}
+    \node at (0.8,0.1) {$\vdots$};
+    \lineHa{1}{0.3}{-0.7}
+    \node at (1.3,0.7) {$\nu_1$};
+    \node at (1.3,-0.7) {$\nu_n$};
+}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{0}{0}{0.6}{2.4}{$T$}
+    \leftlegs \rightlegs
+\end{diagram} \ = \ \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{-1}{0}{0.6}{2.4}{$A$}
+    \rect{1}{0}{0.6}{2.4}{$B$}
+    \lineHa{-0.7}{0.7}{0}
+    \node at (0,0.3) {$\mu$};
+    \begin{scope}[shift={(-1,0)}]
+        \leftlegs
+    \end{scope}
+    \begin{scope}[shift={(1,0)}]
+        \rightlegs
+    \end{scope}
+\end{diagram}
+\end{equation}
+\endgroup
+
+\subsubsection{Reshaping and fusers}
+
+To make use of matrix decomposition algorithms, we need to \emph{reshape} the tensor by combine two or more tensor indices into one, and vice versa. Such operations are done by applying \emph{unitary} operators called \emph{fusers} \cite{Mortier2024}:
+\begin{equation}
+    F: V \to V_1 \otimes \cdots \otimes V^*_n, 
+    \quad \text{represented as tensor} \quad
+    \begin{diagram}[0.8]
+        \dobase{0}{0}
+        \node at (1.8,0) {$\nu$};
+        \lineHa{0.8}{1.5}{0}
+        \fuserR{0}{0}{1.2}{0.8}{$F$}
+        \lineHa{-0.5}{0}{0.7}
+        \node at (-0.3,0.1) {$\vdots$};
+        \lineHa{0}{-0.5}{-0.7}
+        \node at (-0.8,0.7) {$\nu_1$};
+        \node at (-0.8,-0.7) {$\nu_n$};
+    \end{diagram}
+    \label{eq:fuser}
+\end{equation}
+where $V$ is isomorphic to $V_1 \otimes \cdots \otimes V^*_n$. The unitarity of $F$ means that
+\begin{equation}
+    \begin{diagram}[0.8]
+        \dobase{0}{0}
+        \lineHa{-1.8}{-1.3}{0}
+        \fuserL{-0.5}{0}{1.2}{0.8}{$F^\dagger$}
+        \lineHa{-0.5}{0.5}{0.7}
+        \node at (0,0.1) {$\vdots$};
+        \lineHa{0.5}{-0.5}{-0.7}
+        \fuserR{0.5}{0}{1.2}{0.8}{$F$}
+        \lineHa{1.3}{1.8}{0}
+    \end{diagram} = \begin{diagram}
+        \dobase{0}{0} 
+        \mat[0.3]{0}{0}{$I$}
+        \lineHa{-1}{-0.3}{0}
+        \lineHa{0.3}{1}{0}
+    \end{diagram}
+    \quad \text{and} \quad
+    \begin{diagram}[0.8]
+        \dobase{0}{0}
+        \lineHa{-1.7}{-0.8}{0}
+        \fuserL{0}{0}{1.2}{0.8}{$F^\dagger$}
+        \lineHa{0}{0.5}{0.7}
+        \node at (0.2,0.1) {$\vdots$};
+        \lineHa{0.5}{0}{-0.7}
+        \fuserR{-2.5}{0}{1.2}{0.8}{$F$}
+        \lineHa{-3}{-2.5}{0.7}
+        \node at (-2.8,0.1) {$\vdots$};
+        \lineHa{-2.5}{-3}{-0.7}
+    \end{diagram} = \begin{diagram}[0.8]
+        \dobase{0}{0}
+        \mat[0.3]{0}{0.7}{$I$}
+        \node at (0,0.1) {$\vdots$};
+        \mat[0.3]{0}{-0.7}{$P$}
+        \lineHa{-1}{-0.3}{0.7}
+        \lineHa{0.3}{1}{0.7}
+        \lineHa{1}{0.3}{-0.7}
+        \lineHa{-0.3}{-1}{-0.7}
+    \end{diagram}.
+\end{equation}
+To decompose $T$, we define two fusers
+\begin{equation}
+\begin{aligned}
+    F: V &\to V_1 \otimes \cdots \otimes V^*_n,
+    &\quad \dim V &= \prod_{i=1}^n \dim V_i
+    \\
+    \tilde{F}: W &\to W^*_1 \otimes \cdots \otimes W_i,
+    &\quad \dim W &= \prod_{i=1}^n \dim W_i
+\end{aligned}
+\end{equation}
+and rewrite $T$ as
+\begingroup
+\begin{equation}
+\def\leftlegs{
+    \lineHa{-0.3}{-1}{0.7}
+    \node at (-0.7,0.1) {$\vdots$};
+    \lineHa{-1}{-0.3}{-0.7}
+}
+\def\rightlegs{
+    \lineHa{0.3}{1}{0.7}
+    \node at (0.7,0.1) {$\vdots$};
+    \lineHa{1}{0.3}{-0.7}
+}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{0}{0}{0.6}{2.4}{$T$}
+    \leftlegs \rightlegs
+\end{diagram} = \begin{diagram}[0.8][0.8]
+    \dobase{0}{0}
+    \rect{0}{0}{0.6}{2.4}{$T$}
+    \begin{scope}[shift={(-1,0)}]
+        \fuserL{-1}{0}{1.2}{0.5}{$\tilde{F}^\dagger$}
+        \fuserR{-2.5}{0}{1.2}{0.5}{$\tilde{F}$}
+        \lineHa{-2}{-1.5}{0}
+        \node at (-1.75,0.3) {$\omega$};
+        \begin{scope}[shift={(-2.2,0)}]
+            \leftlegs
+        \end{scope}
+    \end{scope}
+    \begin{scope}[shift={(1,0)}]
+        \fuserR{1}{0}{1.2}{0.5}{$F$}
+        \fuserL{2.5}{0}{1.2}{0.5}{$F^\dagger$}
+        \lineHa{1.5}{2}{0}
+        \node at (1.75,0.3) {$\nu$};
+        \begin{scope}[shift={(2.2,0)}]
+            \rightlegs
+        \end{scope}
+    \end{scope}
+    \lineHa{-0.3}{-0.8}{0.7}
+    \lineHa{-1.4}{-2}{0.7}
+    \mat[0.3]{-1.1}{0.7}{$P$}
+    \node at (-1.1,0) {$\vdots$};
+    \lineHa{-2}{-0.3}{-0.7}
+    \lineHa{0.8}{0.3}{-0.7}
+    \lineHa{2}{1.4}{-0.7}
+    \mat[0.3]{1.1}{-0.7}{$P$}
+    \node at (1.1,0.2) {$\vdots$};
+    \lineHa{0.3}{2}{0.7}
+    \node at (0,-1.5) 
+    {$\underbrace{\hspace{5.4cm}}$};
+    \lineHa{-1}{-0.4}{-2.2}
+    \lineHa{0.4}{1}{-2.2}
+    \mat[0.4]{0}{-2.2}{$\tilde{T}$}
+    \node at (-1.3,-2.2) {$\omega$};
+    \node at (1.3,-2.2) {$\nu$};
+\end{diagram}
+\end{equation}
+\endgroup
+The map $\tilde{T} = \tilde{F}^\dagger T F: V \to W$ can then be decomposed using matrix decomposition algorithms, such as QR decomposition, polar decomposition and singular value decomposition (SVD):
+\begin{equation}
+    \Matrixa{$\tilde{T}$}
+    = \Matrixa{$\tilde{A}$} \Matrixa{$\tilde{B}$}
+    \label{eq:matrix-decomp}
+\end{equation}
+Finally, we apply the inverse of the fusers to restore the tensor indices of $A$ and $B$. 
+\begingroup
+\begin{equation}
+\def\leftlegs{
+    \lineHa{0.3}{0.8}{0}
+    \lineHa{-0.3}{-0.8}{0.7}
+    \lineHa{-0.8}{-0.3}{-0.7}
+    \node at (-0.6,0.1) {$\vdots$};
+}
+\def\rightlegs{
+    \lineHa{-0.8}{-0.3}{0}
+    \lineHa{0.3}{0.8}{0.7}
+    \lineHa{0.8}{0.3}{-0.7}
+    \node at (0.6,0.1) {$\vdots$};
+}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} \leftlegs
+    \rect{0}{0}{0.6}{2.4}{$A$}
+\end{diagram} = \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} \leftlegs
+    \fuserR{-0.3}{0}{1.2}{0.6}{$\tilde{F}$}
+    \mat[0.3]{1.1}{0}{$\tilde{A}$}
+    \lineHa{1.4}{1.9}{0}
+\end{diagram},
+\quad
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} \rightlegs
+    \rect{0}{0}{0.6}{2.4}{$B$}
+\end{diagram} = \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} \rightlegs
+    \mat[0.3]{-1.1}{0}{$\tilde{B}$}
+    \fuserL{0.3}{0}{1.2}{0.6}{$F^\dagger$}
+    \lineHa{-1.9}{-1.4}{0}
+\end{diagram}
+\end{equation}
+\endgroup
+
+\subsubsection{Implementation of the fusers}
+
+In programming practice, the tensors are directly reshaped by moving the elements instead of actually contracting with a fuser. The choice of $F: V \to V_1 \otimes \cdots \otimes V^*_n$ is not unique; the simplest choice is
+\begin{equation}
+    F = \ket{\nu_1} \cdots \bra{\nu_n} \otimes \bra{\nu}, 
+\end{equation} 
+where $|\nu| = |\nu_1| + \cdots + |\nu_n|$, and $\nu$ \emph{enumerates} all even (or odd) parity basis vectors of $V_1 \otimes \cdots \otimes V^*_n$ when $|\nu| = 0$ (or $1$). 
+
+Let us consider the following reshaping:
+
+
+
+To describe the effect of the fusers, we shall relabel the basis states by making the parity explicit. 
+
+\subsubsection{Decomposition of tensors with definite parity}
+
+To discuss the decomposition of the matrix $\tilde{T}$, it helps to relabel the basis vectors $\{\ket{\nu}\}$ of $V$ (and similarly $W$), making their parity explicit:
+\begin{equation*}
+    \ket{\nu} \to \ket{\nu^n_j}, 
+    \quad n \equiv |\nu| \in \{0,1\}. 
+\end{equation*}
+The subscript $j$ takes values from 1 to $\dim V_0$ when $n = 0$, or to $\dim V_1$ when $n = 1$. Then 
+\begin{equation}
+    \tilde{T} 
+    = \tilde{T}_{\omega \nu}
+    \ket{\omega} \bra{\nu}
+    \to \tilde{T}^{mn}_{ij}
+    \ket{\omega^m_i} \bra{\nu^n_j}. 
+\end{equation}
+The parity indices $m,n$ divides $\tilde{T}$ into four blocks:
+\begin{equation}
+    \tilde{T} = \begin{bmatrix}
+        T^{00} & T^{01} \\ T^{10} & T^{11}
+    \end{bmatrix}
+    \label{eq:matT-blocks}
+\end{equation}
+The decomposition Eq. \eqref{eq:matrix-decomp} yields
+\begin{equation}
+    \tilde{T}_{\omega \nu}
+    = \tilde{A}_{\omega \alpha} 
+    \tilde{B}_{\alpha \nu}
+    \ \Rightarrow \ 
+    \begin{aligned}
+        T^{00} 
+        &= A^{00} B^{00} + A^{01} B^{10} 
+        \\
+        T^{01} 
+        &= A^{00} B^{01} + A^{01} B^{11}
+        \\
+        T^{10} 
+        &= A^{10} B^{00} + A^{11} B^{10}
+        \\
+        T^{11} 
+        &= A^{10} B^{01} + A^{11} B^{1}
+    \end{aligned}
+    \label{eq:matT-decomp}
+\end{equation}
+In physical applications, the tensor of $T$ has a definite parity. 
+\begin{itemize}
+\item If $T$ has even parity, then $T^{01}, T^{10}$ are zero. We can always choose $A, B$ such that they have the same parity (say even). Then $A^{01}, A^{10}, B^{01}, B^{10}$ are zero, and Eq. \eqref{eq:matT-decomp} is reduced to a separate decomposition of $T^{00}$ and $T^{11}$:
+\begin{equation}
+    T^{00} = A^{00} B^{00} 
+    , \quad
+    T^{11} = A^{11} B^{11}
+\end{equation}
+\item If $T$ has odd parity, then $T^{00}, T^{11}$ are zero. We can always choose $A, B$ such that they have opposite parity (say $|A| = 1$). Then $A^{00}, A^{11}, B^{01}, B^{10}$ are zero, and Eq. \eqref{eq:matT-decomp} is reduced to a separate decomposition of $T^{01}$ and $T^{10}$:
+\begin{equation}
+    T^{01} = A^{01} B^{11}
+    , \quad
+    T^{10} = A^{10} B^{00} 
+\end{equation}
+\end{itemize}
+Then the nonzero blocks of $A, B$ are obtained from usual decomposition of nonzero blocks of $T$.
+
+\subsubsection{Common tensor decompositions}
+\begingroup
+\def\leftlegs{
+    \lineHa{-0.3}{-1}{0.7}
+    \node at (-0.7,0.1) {$\vdots$};
+    \lineHa{-1}{-0.3}{-0.7}
+}
+\def\rightlegs{
+    \lineHa{0.3}{1}{0.7}
+    \node at (0.7,0.1) {$\vdots$};
+    \lineHa{1}{0.3}{-0.7}
+}
+
+Here we describe common decompositions used in tensor network algorithms. Assume that $T$ has even parity. The dimensions of the reshaped matrix $\tilde{T}$ is denoted by $m \times n$, and let $k \equiv \min(m,n)$. 
+The $d$-dimensional identity tensor will be denoted as $1_d$. 
+
+\begin{itemize}
+
+\item \emph{QR and LQ decompositions}
+
+The matrix QR decomposition gives $\tilde{T} = \tilde{Q} \tilde{R}$, 
+where $\tilde{Q}$ is a $m \times k$ left-unitary ($\tilde{Q}^\dagger \tilde{Q} = 1_k$) matrix, 
+and $\tilde{R}$ is an $k \times n$ upper triangular matrix. 
+The decomposition is unique if we require the diagonal elements of $R$ to be positive. 
+The left-unitary condition satisfied by $Q$ is then
+\begin{equation}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \lineHa{-3}{-2.3}{0}
+    \rect{-2}{0}{0.6}{2.4}{$Q^\dagger$}
+    \rect{0}{0}{0.6}{2.4}{$Q$}
+    \lineHa{0.3}{1}{0}
+    \begin{scope}[shift={(0,0)}]
+        \leftlegs
+    \end{scope}
+    \begin{scope}[shift={(-0.7,0)}]
+        \leftlegs
+    \end{scope}
+    \draw[fill=white] (-1,0.7) circle (0.1);
+\end{diagram} \ = \ \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \lineHa{-1}{1}{0}
+\end{diagram}
+\end{equation}
+The small circle represents a $P$ tensor. Similarly, we have the matrix LQ decomposition $\tilde{T} = \tilde{L} \tilde{Q}$ (which is actually the QR decomposition of transposed $\tilde{T}$), 
+where $\tilde{L}$ is an $m \times k$ lower triangular matrix, 
+and $\tilde{Q}$ is a $k \times n$ right-unitary ($\tilde{Q} \tilde{Q}^\dagger = 1_k$) matrix. 
+The right-unitary condition satisfied by $Q$ is then
+\begin{equation}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{0}{0}{0.6}{2.4}{$Q$}
+    \rect{2}{0}{0.6}{2.4}{$Q^\dagger$}
+    \lineHa{-1}{-0.3}{0}
+    \lineHa{2.3}{3}{0}
+    \begin{scope}[shift={(0,0)}]
+        \rightlegs
+    \end{scope}
+    \begin{scope}[shift={(0.7,0)}]
+        \rightlegs
+    \end{scope}
+    \draw[fill=white] (1,-0.7) circle (0.1);
+\end{diagram} \ = \ \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \lineHa{-1}{1}{0}
+\end{diagram}
+\end{equation}
+
+\item \emph{Singular value decomposition (SVD)}
+
+The matrix (reduced) SVD gives $\tilde{T} = \tilde{U} s \tilde{V}^\dagger$. 
+The dimensions of $\tilde{U}$ and $\tilde{V}^\dagger$ are $m \times k$ and $k \times n$, respectively. 
+The singular value matrix $s$ is a $k \times k$ diagonal matrix with even parity:
+\begin{equation}
+    s = \sum_{\alpha,\alpha'}
+    s_\alpha \delta_{\alpha \alpha'}
+    \ket{\alpha} \bra{\alpha'}
+    = \sum_{\alpha} 
+    s_\alpha \ket{\alpha} \bra{\alpha},
+\end{equation}
+where $s_\alpha \ge 0$ are singular values of $\tilde{T}$. In tensor form, 
+\begin{equation}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{0}{0}{0.6}{2.4}{$T$}
+    \leftlegs \rightlegs
+\end{diagram} \ = \ \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{-1.5}{0}{0.6}{2.4}{$U$}
+    \rect{1.5}{0}{0.6}{2.4}{$V^\dagger$}
+    \mat[0.5]{0}{0}{$s$}
+    \lineHa{-1.2}{-0.5}{0}
+    \lineHa{0.5}{1.2}{0}
+    \begin{scope}[shift={(-1.5,0)}]
+        \leftlegs
+    \end{scope}
+    \begin{scope}[shift={(1.5,0)}]
+        \rightlegs
+    \end{scope}
+\end{diagram}. 
+\end{equation}
+Both $U$ and $V$ are left-unitary, i.e. $U^\dagger U = V^\dagger V = 1_k$. In graphical representation, 
+\begin{equation}
+\begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \lineHa{-3}{-2.3}{0}
+    \rect{-2}{0}{0.6}{2.4}{$U^\dagger$}
+    \rect{0}{0}{0.6}{2.4}{$U$}
+    \lineHa{0.3}{1}{0}
+    \begin{scope}[shift={(0,0)}]
+        \leftlegs
+    \end{scope}
+    \begin{scope}[shift={(-0.7,0)}]
+        \leftlegs
+    \end{scope}
+    \draw[fill=white] (-1,0.7) circle (0.1);
+\end{diagram} 
+\ = \ \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \rect{0}{0}{0.6}{2.4}{$V^\dagger$}
+    \rect{2}{0}{0.6}{2.4}{$V$}
+    \lineHa{-1}{-0.3}{0}
+    \lineHa{2.3}{3}{0}
+    \begin{scope}[shift={(0,0)}]
+        \rightlegs
+    \end{scope}
+    \begin{scope}[shift={(0.7,0)}]
+        \rightlegs
+    \end{scope}
+    \draw[fill=white] (1,-0.7) circle (0.1);
+\end{diagram} \ = \ \begin{diagram}[0.8][0.8]
+    \dobase{0}{0} 
+    \lineHa{-1}{1}{0}
+\end{diagram}. 
+\end{equation}
+
+\item \emph{Polar decomposition}
+
+The matrix polar decomposition gives $\tilde{T} = \tilde{U} \tilde{P}$ (the "right" decomposition) or $\tilde{T} = \tilde{P} \tilde{U}$ (the "left" decomposition). 
+The matrix $\tilde{U}$ always has the same dimension $m \times n$ as $\tilde{T}$, 
+and is left unitary ($U^\dagger U = 1_n$) when $m \ge n$, 
+or right unitary ($U U^\dagger = 1_m$) when $m \le n$. 
+The matrix $\tilde{P}$ has dimension $n \times n$ for right decomposition, or $m \times m$ for left decomposition. 
+
+\end{itemize}
+\endgroup
+
+\bibliographystyle{ieeetr}
+\bibliography{./refs}
+
+\end{document}

@@ -1,0 +1,446 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=2cm]{geometry}
+\input{../preamble.tex}
+\graphicspath{{./images/}}
+
+\def\pad{0.1}
+\newcommand{\tensora}[2]{
+    \draw[midarrow] (#1,#2) -- +(1,0);
+    \draw[midarrow] (#1-1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2) -- +(0,1);
+    \draw[midarrow] (#1,#2-1) -- +(0,1);
+    \draw[fill=green] (#1,#2) circle (\pad);
+}
+\NewDocumentCommand{\ctmnw}{m m O{$C^1$}}{
+    \draw[midarrow] (#1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2-1) -- +(0,1);
+    \node[anchor=south] at (#1,#2+0.1) {#3};
+    \draw[fill=orange] (#1-\pad,#2-\pad) rectangle (#1+\pad,#2+\pad);
+}
+\NewDocumentCommand{\ctmne}{m m O{$C^2$}}{
+    \draw[midarrow] (#1-1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2-1) -- +(0,1);
+    \node[anchor=south] at (#1,#2+0.1) {#3};
+    \draw[fill=orange] (#1-\pad,#2-\pad) rectangle (#1+\pad,#2+\pad);
+}
+\NewDocumentCommand{\ctmsw}{m m O{$C^4$}}{
+    \draw[midarrow] (#1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2) -- +(0,1);
+    \node[anchor=north] at (#1,#2-0.1) {#3};
+    \draw[fill=orange] (#1-\pad,#2-\pad) rectangle (#1+\pad,#2+\pad);
+}
+\NewDocumentCommand{\ctmse}{m m O{$C^3$}}{
+    \draw[midarrow] (#1-1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2) -- +(0,1);
+    \node[anchor=north] at (#1,#2-0.1) {#3};
+    \draw[fill=orange] (#1-\pad,#2-\pad) rectangle (#1+\pad,#2+\pad);
+}
+
+\NewDocumentCommand{\ctmn}{m m O{$T^1$}}{
+    \draw[midarrow] (#1-1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2-1) -- +(0,1);
+    \node[anchor=south] at (#1,#2+0.1) {#3};
+    \draw[fill=yellow] (#1,#2) circle (\pad);
+}
+\NewDocumentCommand{\ctme}{m m O{$T^2$}}{
+    \draw[midarrow] (#1,#2-1) -- +(0,1);
+    \draw[midarrow] (#1,#2) -- +(0,1);
+    \draw[midarrow] (#1-1,#2) -- +(1,0);
+    \node[anchor=west] at (#1+0.1,#2) {#3};
+    \draw[fill=yellow] (#1,#2) circle (\pad);
+}
+\NewDocumentCommand{\ctms}{m m O{$T^3$}}{
+    \draw[midarrow] (#1-1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2) -- +(1,0);
+    \draw[midarrow] (#1,#2) -- +(0,1);
+    \node[anchor=north] at (#1,#2-0.1) {#3};
+    \draw[fill=yellow] (#1,#2) circle (\pad);
+}
+\NewDocumentCommand{\ctmw}{m m O{$T^4$}}{
+    \draw[midarrow] (#1,#2-1) -- +(0,1);
+    \draw[midarrow] (#1,#2) -- +(0,1);
+    \draw[midarrow] (#1,#2) -- +(1,0);
+    \node[anchor=east] at (#1-0.1,#2) {#3};
+    \draw[fill=yellow] (#1,#2) circle (\pad);
+}
+
+\NewDocumentCommand{\projl}{m m O{$P^a$}}{
+    \draw[midarrow] (#1-1,#2+0.5) -- ++(1,0);
+    \draw[midarrow] (#1-1,#2-0.5) -- ++(1,0);
+    \draw[midarrow] (#1+0.3,#2) -- ++(0.7,0);
+    \draw[fill=cyan] (#1,#2-0.7) -- (#1+0.3,#2) -- (#1,#2+0.7) -- cycle;
+    \node[anchor=south west] at (#1+0.2,#2) {#3};
+}
+\NewDocumentCommand{\projr}{m m O{$P^b$}}{
+    \draw[midarrow] (#1,#2+0.5) -- ++(1,0);
+    \draw[midarrow] (#1,#2-0.5) -- ++(1,0);
+    \draw[midarrow] (#1-1,#2) -- ++(0.7,0);
+    \draw[fill=cyan] (#1,#2-0.7) -- (#1-0.3,#2) -- (#1,#2+0.7) -- cycle;
+    \node[anchor=south east] at (#1-0.2,#2) {#3};
+}
+
+\begin{document}
+
+\section{CTMRG algorithm}
+
+Consider an iPEPS with $N_x \times N_y$ unit cell.
+\begin{equation}
+    \ket{\Psi} = \begin{diagram}[0.8][1.0]
+        \dobase{0}{0} 
+        \foreach \x in {-1,...,1} \foreach \y in {-1,...,1}
+        {\tensora{\x}{\y} \draw[midarrow] (\x+0.3,\y+0.3) -- (\x,\y);}
+        \foreach \x/\xlabel in {-1/x-1,0/x,1/x+1}
+        {\node at (\x,-2.2) {$\xlabel$};}
+        \foreach \y/\ylabel in {-1/y-1,0/y,1/y+1}
+        {\node at (2.5,\y) {$\ylabel$};}
+        \node[anchor=north east] at (0,0) {$A_{x,y}$};
+    \end{diagram}, \qquad
+    A_{x+N_x,y} = A_{x,y+N_y} = A_{x,y}
+\end{equation}
+We choose the arrows on $A_{x,y}$ to point in the direction of increasing $x$, $y$. To calculate the norm of $\ket{\Psi}$ or measure the expectation value in $\ket{\Psi}$, we need to contract the physical axis of $A_{x,y}$ with $A^\dagger_{x,y}$, leading to the reduced tensor $M_{x,y}$:
+\begin{equation}
+    \def\shift{0.15}
+    \begin{diagram}[1.0][1.0]
+        \dobase{0}{0} \tensora{0}{0}
+        \node[anchor=south east] at (0,0) {$M_{x,y}$};
+    \end{diagram}
+    = \begin{diagram}[1.0][1.0]
+        \dobase{0}{0} 
+        \draw[midarrow] (\shift,\shift) -- (-\shift,-\shift);
+        \tensora{-\shift}{-\shift}
+        \node[anchor=north east] at (-\shift,-\shift) {$A_{x,y}$};
+        \begin{scope}[opacity=0.5]
+            \tensora{\shift}{\shift}
+            \node[anchor=south west] at (\shift,\shift) {$A'^\dagger_{x,y}$};
+        \end{scope}
+    \end{diagram}
+\end{equation}
+The arrows on virtual legs of $A^\dagger_{x,y}$ are flipped to be the same as $A_{x,y}$. In the CTMRG algorithm to contract the network $\ket{\Psi|\Psi}$, the environment of each tensor $a_{x,y}$ ($x=1,...,N_x$, $y=1,...,N_y$) is represented by the corner transfer matrices (CTMs)
+\begin{equation}
+    \begin{diagram}[1.0][0.7]
+        \dobase{0}{0}
+        \foreach \angle in {0,90,180,270}{\begin{scope}[rotate=\angle]
+            \draw[fill=yellow!40, rounded corners] (-0.3,0.7) rectangle ++(0.6,2.5);
+            \draw[fill=orange!40, rounded corners] (0.7,0.7) rectangle ++(2.5,2.5);
+        \end{scope}}
+        \foreach \x in {-2,...,2} \foreach \y in {-2,...,2}
+        {\tensora{\x}{\y}}
+        \node at (0,-3.7) {$x$};
+        \node at (-3.7,0) {$y$};
+    \end{diagram}
+    \quad \to \quad \begin{diagram}[0.9][1.3]
+        \dobase{0}{0} \tensora{0}{0}
+        \node[anchor=south west] at (0,0) {$M$};
+        \ctmn{0}{1} \ctme{1}{0} \ctms{0}{-1} \ctmw{-1}{0}
+        \ctmnw{-1}{1} \ctmne{1}{1} \ctmse{1}{-1} \ctmsw{-1}{-1}
+        \foreach \x/\xlabel in {-1/x-1,0/x,1/x+1}
+        {\node at (\x,-1.7) {$\xlabel$};}
+        \foreach \y/\ylabel in {-1/y-1,0/y,1/y+1}
+        {\node at (2.0,\y) {$\ylabel$};}
+    \end{diagram}
+\end{equation}
+
+\subsection{The RG algorithm}
+
+The \emph{down move} updates the down edge: for each $x = 1, ..., N_x$ and $y = 1, ..., N_y$, the renormalization step for the CTMs $C^4, T^3, C^3$ is \cite{Corboz2016}
+\begin{equation}
+    \begin{diagram}[0.9][1.0]
+        \dobase{0}{0} 
+        \foreach \x/\xlabel in {-1/x-1,0/x,1/x+1}
+        {\node at (\x,1.3) {$\xlabel$};}
+        \foreach \y/\ylabel in {-1/y-1,0/y}
+        {\node at (-2.2,\y) {$\ylabel$};}
+        \node[anchor=south west] at (0,0) {$M$};
+        \ctmw{-1}{0} \tensora{0}{0} \ctme{1}{0}
+        \ctmsw{-1}{-1} \ctms{0}{-1} \ctmse{1}{-1}
+    \end{diagram} 
+    \quad \to \quad \begin{diagram}[1.0][1.0]
+        \dobase{0}{0} 
+        \foreach \x/\xlabel in {-1/x-1,0/x,1/x+1}
+        {\node at (\x,1.3) {$\xlabel$};}
+        \node at (2.2,0) {$y$};
+        \ctmsw{-1}{0} \ctms{0}{0} \ctmse{1}{0}
+    \end{diagram}
+\end{equation}
+The two rows are compressed together using \emph{projectors} $P^a$ and $P^b$:
+\begingroup
+\def\scale{0.9}
+\def\tscale{1.0}
+\begin{equation}
+\begin{gathered}
+    \begin{diagram}[\tscale][\scale]
+        \dobase{0}{0} \ctmsw{0}{0}[$C^4_{x-1,y}$]
+    \end{diagram} = \begin{diagram}[\tscale][\scale]
+        \dobase{0}{-0.5} 
+        \ctmsw{0}{-1}[$C^4_{x-1,y-1}$] 
+        \ctmw{0}{0}[$T^4_{x-1,y}$] 
+        \projl{1}{-0.5}[$P^a_{x-1,y-1}$]
+    \end{diagram}, 
+    \qquad \qquad
+    \begin{diagram}[\tscale][\scale]
+        \dobase{0}{0} \ctmse{0}{0}[$C^3_{x+1,y}$]
+    \end{diagram} = \begin{diagram}[\tscale][\scale]
+        \dobase{0}{-0.5} 
+        \projr{-1}{-0.5}[$P^b_{x,y-1}$]
+        \ctmse{0}{-1}[$C^3_{x+1,y-1}$] 
+        \ctme{0}{0}[$T^2_{x+1,y}$]
+    \end{diagram}
+    \\
+    \begin{diagram}[\tscale][\scale]
+        \dobase{0}{0} \ctms{0}{0}[$T^3_{x,y}$]
+    \end{diagram} = \begin{diagram}[\tscale][\scale]
+        \dobase{0}{-0.5} 
+        \ctms{0}{-1}[$T^3_{x,y-1}$]
+        \tensora{0}{0}
+        \node[anchor=south west] at (0,0) {$M_{x,y}$};
+        \projr{-1}{-0.5}[$P^b_{x-1,y-1}$]
+        \projl{1}{-0.5}[$P^a_{x,y-1}$]
+    \end{diagram}
+\end{gathered}
+\end{equation}
+\endgroup
+where $P^a_{x,y}, P^b_{x,y}$ satisfy the \emph{approximate} identity
+\begin{equation}
+    \begin{diagram}[1.0][0.9]
+        \dobase{0}{0}
+        \projr{-0.5}{0}[$P^b_{x,y}$]
+        \projl{0.5}{0}[$P^a_{x,y}$]
+    \end{diagram}
+    \quad \approx \quad 
+    \begin{diagram}[1.0][0.9]
+        \dobase{0}{0}
+        \draw[midarrow] (-0.5,0) -- (0.5,0);
+    \end{diagram}
+    \label{eq:proj-iden}
+\end{equation}
+
+\subsubsection*{Construction of Projectors}
+
+The performance of the CTMRG algorithm depends heavily on the choice of projectors.
+In Ref. \cite{Corboz2014}, the projectors $\{P^a_{x,y}\}, \{P^b_{x,y}\}$ are constructed in the following way: 
+\begin{itemize}
+    \item Construct a $2 \times 2$ unit cell surrounded a loop of the CTMs, with $M_{x,y}$ in the lower-left corner. 
+    \begin{equation}
+        \def\nx{1} \def\ny{1}
+        \begin{diagram}[0.9][1.2]
+            \dobase{0}{0}
+            \foreach \x in {0,...,\nx} \foreach \y in {0,...,\ny}
+            {\tensora{\x}{\y}}
+            \foreach \x in {0,...,\nx} {\ctms{\x}{-1} \ctmn{\x}{\ny+1}}
+            \foreach \y in {0,...,\ny} {\ctmw{-1}{\y} \ctme{\nx+1}{\y}}
+            \ctmnw{-1}{\ny+1} \ctmne{\nx+1}{\ny+1}
+            \ctmsw{-1}{-1} \ctmse{\nx+1}{-1}
+            \draw[red,dashed] (0.5,-1.3) -- (0.5,0.3);
+            \node[red,anchor=north] at (0.5,-1.3) {cut};
+            \draw[red,dashed] (0.5,0.7) -- (0.5,2.3);
+            \node[red,anchor=south] at (0.5,2.3) {cut};
+
+            \foreach \x/\xlabel in {-1/x-1,0/x,1/x+1,2/x+2}
+            {\node at (\x,-1.8) {$\xlabel$};}
+            \foreach \y/\ylabel in {-1/y-1,0/y,1/y+1,2/y+2}
+            {\node at (-2.2,\y) {$\ylabel$};}
+        \end{diagram}
+    \end{equation}
+
+    \item To obtain $P^{a,b}_{x,y-1}$, the network is cut through between the $x$-th and the $(x+1)$-th column. Then we perform QR and LQ decomposition for the left half $C_L$ and the right half $C_R$ to obtain the tensors $R_{x,y-1}$, $L_{x,y-1}$:
+    \begin{equation}
+        \begin{diagram}[0.8][1.3]
+            \dobase{0}{0} 
+            \rect{0}{0}{0.6}{1.5}{$C_L$}[lightgray]
+            \foreach \y in {-0.6,-0.2,0.2,0.6}
+            {\draw[midarrow] (0.3,\y) -- (0.7,\y);}
+        \end{diagram} = \begin{diagram}[0.8][1.2]
+            \dobase{0}{0}
+            \foreach \y in {-0.6,-0.4,0.4,0.6}
+            {\draw[midarrow] (0.3,\y) -- (0.7,\y);}
+            \rect{0}{0.5}{0.6}{0.6}{$Q$}
+            \rect{0}{-0.5}{0.6}{0.6}{$R$}
+            \draw[midarrow] (-0.3,0.5) to[out=180,in=180] (-0.3,-0.5);
+        \end{diagram}, \qquad \begin{diagram}[0.8][1.2]
+            \dobase{0}{0}
+            \foreach \y in {-0.6,-0.4,0.4,0.6}
+            {\draw[midarrow] (-0.7,\y) -- (-0.3,\y);}
+            \rect{0}{0.5}{0.6}{0.6}{$\tilde{Q}$}
+            \rect{0}{-0.5}{0.6}{0.6}{$L$}
+            \draw[midarrow] (0.3,-0.5) to[out=0,in=0] (0.3,0.5);
+        \end{diagram} = \begin{diagram}[0.8][1.3]
+            \dobase{0}{0} 
+            \rect{0}{0}{0.6}{1.5}{$C_R$}[lightgray]
+            \foreach \y in {-0.6,-0.2,0.2,0.6}
+            {\draw[midarrow] (-0.7,\y) -- (-0.3,\y);}
+        \end{diagram}
+    \end{equation}
+
+    \item To truncate the bond between $R$ and $L$, we perform SVD on $R L$:
+    \begin{equation}
+        \begin{diagram}[0.8][1.2]
+            \dobase{0}{0}
+            \rect{-0.5}{0}{0.6}{0.6}{$R$}
+            \rect{0.5}{0}{0.6}{0.6}{$L$}
+            \foreach \y in {-0.1,0.1}
+            {\draw[midarrow] (-0.2,\y) -- (0.2,\y);}
+            \draw[midarrow] (-1.1,0) -- (-0.8,0);
+            \draw[midarrow] (0.8,0) -- (1.1,0);
+        \end{diagram} \approx \begin{diagram}[0.8][1.2]
+            \rect{-0.7}{0}{0.6}{0.6}{$U$}
+            \rect{0.7}{0}{0.6}{0.6}{$V^\dagger$}
+            \draw[midarrow] (-1.5,0) -- (-1,0);
+            \draw[midarrow] (-0.4,0) -- (-0.1,0);
+            \draw[midarrow] (0.1,0) -- (0.4,0);
+            \draw[midarrow] (1,0) -- (1.5,0);
+            \weight[0.1]{0}{0}{}
+            \node[anchor=south] at (0,0.1) {$s$};
+        \end{diagram}
+    \end{equation}
+    The singular value spectrum $s$ is truncated to wanted dimension. This also implies
+    \begin{equation}
+        \begin{diagram}[0.8][1.2]
+            \dobase{0}{0}
+            \rect{-0.5}{0}{0.6}{0.6}{$L^{-1}$}
+            \rect{0.5}{0}{0.6}{0.6}{$R^{-1}$}
+            \foreach \y in {-0.1,0.1}
+            {\draw[midarrow] (-0.2,\y) -- (0.2,\y);}
+            \draw[midarrow] (-1.1,0) -- (-0.8,0);
+            \draw[midarrow] (0.8,0) -- (1.1,0);
+        \end{diagram} \approx \begin{diagram}[0.8][1.2]
+            \rect{-0.7}{0}{0.6}{0.6}{$V$}
+            \rect{0.7}{0}{0.6}{0.6}{$U^\dagger$}
+            \draw[midarrow] (-1.5,0) -- (-1,0);
+            \draw[midarrow] (-0.4,0) -- (-0.1,0);
+            \draw[midarrow] (0.1,0) -- (0.4,0);
+            \draw[midarrow] (1,0) -- (1.5,0);
+            \weight[0.1]{0}{0}{}
+            \node[anchor=south] at (0,0.1) {$1/s$};
+        \end{diagram}
+    \end{equation}
+
+    \item The projectors $P^a_{x,y-1}, P^b_{x,y-1}$ are then defined as
+    \begingroup
+    \newcommand{\mywt}[1]{
+        \weight[0.1]{#1}{0}{}
+        \draw[midarrow] (#1+0.1,0) -- ++(0.3,0);
+        \draw[midarrow] (#1-0.4,0) -- ++(0.3,0);
+    }
+    \begin{equation}
+        \begin{diagram}[1.0][0.8]
+            \dobase{0}{0} \projl{0}{0}[$P^a_{x,y-1}$]
+        \end{diagram} = \begin{diagram}[0.8][1.2]
+            \dobase{0}{0} \rect{0}{0}{0.6}{0.6}{$L$}
+            \rect{1}{0}{0.6}{0.6}{$V$}
+            \foreach \y in {-0.1,0.1}
+            {\draw[midarrow] (-0.7,\y) -- (-0.3,\y);}
+            \draw[midarrow] (0.3,0) -- (0.7,0);
+            \mywt{1.7}
+            \node[anchor=south] at (1.7,0.1) {$s^{-1/2}$};
+        \end{diagram}, \quad
+        \begin{diagram}[1.0][0.8]
+            \dobase{0}{0} \projr{0}{0}[$P^b_{x,y-1}$]
+        \end{diagram} = \begin{diagram}[0.8][1.2]
+            \dobase{0}{0} \rect{0}{0}{0.6}{0.6}{$U^\dagger$}
+            \rect{1}{0}{0.6}{0.6}{$R$}
+            \foreach \y in {-0.1,0.1}
+            {\draw[midarrow] (1.3,\y) -- (1.7,\y);}
+            \draw[midarrow] (0.3,0) -- (0.7,0);
+            \mywt{-0.7}
+            \node[anchor=south] at (-0.7,0.1) {$s^{-1/2}$};
+        \end{diagram}
+    \end{equation}
+    \endgroup
+    They satisfy the approximate identity Eq. \eqref{eq:proj-iden}.
+\end{itemize}
+This procedure is equivalent to the following \cite{Fishman2018,Mortier2024}:
+\begin{itemize}
+    \item We directly perform SVD on $C_L C_R$:
+    \begin{equation}
+        \begin{diagram}[0.8][1.3]
+            \dobase{0}{0} 
+            \rect{0}{0}{0.6}{1.5}{$C_L$}[lightgray]
+            \rect{2}{0}{0.6}{1.5}{$C_R$}[lightgray]
+            \foreach \y in {0.2,0.6} {
+                \draw[midarrow] (0.3,\y) -- (0.7,\y);
+                \draw[midarrow] (1.3,\y) -- (1.7,\y);
+            }
+            \foreach \y in {-0.6,-0.2}
+            {\draw[midarrow] (0.3,\y) -- (1.7,\y);}
+        \end{diagram}
+        \quad \approx \quad \begin{diagram}[0.8][1.3]
+            \dobase{0}{0}
+            \rect{-1}{0.4}{0.6}{0.6}{$U$}
+            \rect{1}{0.4}{0.6}{0.6}{$V^\dagger$}
+            \weight[0.1]{0}{-0.4}{}
+            \node at (0,-0.7) {$s$};
+            \foreach \y in {0.3,0.5} {
+                \draw[midarrow] (-0.7,\y) -- (-0.3,\y);
+                \draw[midarrow] (0.3,\y) -- (0.7,\y);
+            }
+            \draw[midarrow] (-1,0.1) to[out=-90,in=180] (-0.1,-0.4);
+            \draw[midarrow] (0.1,-0.4) to[out=0,in=-90] (1,0.1);
+        \end{diagram}
+    \end{equation}
+
+    \item The projectors $P^a_{x,y-1}, P^b_{x,y-1}$ are defined as
+    \begin{equation}
+        \begin{diagram}[1.0][0.8]
+            \dobase{0}{0} \projl{0}{0}[$P^a_{x,y-1}$]
+        \end{diagram} = \begin{diagram}[0.8][1.3]
+            \dobase{0}{-0.4} 
+            \rect{0}{0.45}{0.6}{0.6}{$V$}
+            \rect{1.4}{0}{0.6}{1.5}{$C_R$}[lightgray]
+            \foreach \y in {0.3, 0.6}{
+                \draw[midarrow] (0.3,\y) -- (0.6,\y);
+                \draw (0.7,\y) circle (0.1);
+                \draw[midarrow] (0.8,\y) -- (1.1,\y);
+            }
+            \foreach \y in {-0.5,-0.2}
+            {\draw[midarrow] (0,\y) -- (1.1,\y);}
+            \weight[0.1]{0.7}{1.2}{}
+            \draw[midarrow] (0,0.75) 
+            to[out=90,in=180] (0.6,1.2);
+            \draw[midarrow] (0.8,1.2) -- (2,1.2);
+            \draw[midarrow] (2,1.2) -- (2,-0.4);
+            \draw[midarrow] (2,-0.4) -- (2.5,-0.4);
+        \end{diagram}, 
+        \qquad
+        \begin{diagram}[1.0][0.8]
+            \dobase{0}{0} \projr{0}{0}[$P^b_{x,y-1}$]
+        \end{diagram} = \begin{diagram}[0.8][1.3]
+            \dobase{0}{-0.4} 
+            \rect{1.4}{0.45}{0.6}{0.6}{$U^\dagger$}
+            \rect{0}{0}{0.6}{1.5}{$C_L$}[lightgray]
+            \foreach \y in {0.3, 0.6}{
+                \draw[midarrow] (0.3,\y) -- (0.6,\y);
+                \draw (0.7,\y) circle (0.1);
+                \draw[midarrow] (0.8,\y) -- (1.1,\y);
+            }
+            \foreach \y in {-0.5,-0.2}
+            {\draw[midarrow] (0.3,\y) -- (1.5,\y);}
+            \weight[0.1]{0.7}{1.2}{}
+            \draw[midarrow] (0.8,1.2)
+            to[out=0,in=90] (1.4,0.75);
+            \draw[midarrow] (-1,-0.4) -- (-0.5,-0.4);
+            \draw[midarrow] (-0.5,-0.4) -- (-0.5,1.2);
+            \draw[midarrow] (-0.5,1.2) -- (0.6,1.2);
+        \end{diagram}
+    \end{equation}
+    The circles are the $P$ tensors needed to cancel unwanted fermion signs. 
+\end{itemize}
+
+Similarly, we can perform \emph{up/left/right moves} on the corresponding edges. After we update the four edges, the obtained CTMs should be normalized. 
+
+\subsection{Momentum space calculation}
+
+\cite{Ponsioen2022}
+
+\subsection{Manual calculation of gradients}
+
+\cite{Corboz2016}
+
+\subsection{Auto-differentiation of CTMRG}
+
+\cite{Liao2019,Ponsioen2022,Francuz2023}
+
+\bibliographystyle{ieeetr}
+\bibliography{./refs}
+
+\end{document}

@@ -203,17 +203,26 @@ A tensor is a similar mutilinear object mapping some vectors as well as dual vec
 A type-$(p, q)$ tensor $T$ can be defined as a map:
 $$
 \begin{equation}
-    T: \otimes_{i=0}^{p-1}V_{i}^{*}\otimes_{j=0}^{q-1}V_{j}\rightarrow\mathbb{C}.
+    T: \otimes_{j=0}^{q-1}V_{j}\otimes_{i=0}^{p-1}V_{i}^{*}\rightarrow\mathbb{C}.
 \end{equation}
 $$
 Here each vector space represents a **bond** (or **index**) of $T$.
 The rank of $T$ is $r=p+q$.
+In a specific representation, $T$ can be written as:
+$$
+\begin{equation}
+    T_{{ij}\dots{kl}\dots}
+\end{equation}
+$$
 $T$ can be written as a $r$-dimensional **array** over $\mathbb{C}$.
 In this sense, we find that a tensor behaviors like a dual vector.
 Alternatively, we can also view a tensor as a matrix.
-That is, we can group all the indices of $T$ into two groups and the associated vector spaces are divided into **domain** and **codomain**.
+That is, we can group all the indices of $T$ into two groups.
+The associated vector spaces are divided into **domain** and **codomain** (no matter the type of vector spaces).
 Then $T$ behaves like a matrix mapping from the domain to the codomain.
-For a simplest example, a linear map $V\rightarrow{W}$ can be represented by a tensor in $V\otimes{W}^{*}$.
+
+**Example**
+A linear map $V\rightarrow{W}$ can be represented by a tensor in $W\otimes{V}^{*}$, which can be represented as $T_{ij}\vert{i}\rangle\langle{j}\vert, \vert{i}\rangle\in{W}, \langle{j}\vert\in{V}^{*}$.
 
 **Contraction** of two tensors is a combination of these two linear maps, where the contracted indices are the domain and codomain of the first and second tensors, respectively.
 Each pair of indices are nothing but the contraction or action between the dual vector space and its normal one.

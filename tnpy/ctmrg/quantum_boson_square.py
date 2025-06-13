@@ -34,7 +34,8 @@ class QuantumSquareCTMRG(object):
         #   |  |  |
         #   *--*--*
         #  C0  Ed  C1
-        that is, effectively, each site is placed by NINE tensors: 1 wf tensor + 8 CTM tensors
+        that is, effectively, each site is placed by NINE tensors:
+        1 wf tensor + 8 CTM tensors (environments for other sites)
         '''
         self._dtype = dtype
         # sorted by the key/coordinate (x, y), firstly by y, then by x
@@ -51,7 +52,6 @@ class QuantumSquareCTMRG(object):
         self._nx, self._ny = len(xs), len(ys)
         # inner bond dimension
         self._chi = self._wfs[(0, 0)].shape[0]
-
         # double tensors
         #       2 3
         #       | |
@@ -64,19 +64,18 @@ class QuantumSquareCTMRG(object):
         for c in self._coords:
             self._dts.update(
                     {c: torch.einsum('ABCDe,abcde->AaBbCcDd', wfs[c].conj(), wfs[c])})
-
         # CTMRG environment tensors
         self._ctm_names = 'C0', 'C1', 'C2', 'C3', 'Ed', 'Eu', 'El', 'Er'
         temp = {}
         for i, n in enumerate(self._ctm_names):
             # generate corner and edge tensors
             if i < 4:
-                temp.update({n: torch.rand(rho, rho).to(dtype)})
+                temp.update({n: torch.randn(rho, rho).to(dtype)})
             else:
             # 0--*--1
             #   / \
             #  2   3
-                temp.update({n: torch.rand(rho, rho, self._chi, self._chi).to(dtype)})
+                temp.update({n: torch.randn(rho, rho, self._chi, self._chi).to(dtype)})
         # every site is associted with a set of CTM tensors
         self._ctms = {}
         for c in self._coords:
@@ -197,6 +196,103 @@ class QuantumSquareCTMRG(object):
         sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
         pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
         pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+        '''
+        u, s, v = tp.linalg.tsvd(
+                torch.einsum('abcdef,abcghi->defghi', rho_l, rho_r),
+                group_dims=((0, 1, 2), (3, 4, 5)),
+                svd_dims=(3, 0))
+        ut, st, vt = u[:, :, :, :self._rho], s[:self._rho], v[:self._rho, :, :, :]
+        # ut_dagger = ut.permute(3, 0, 1, 2).conj()
+        # vt_dagger = vt.permute(1, 2, 3, 0).conj()
+        ut_dagger, vt_dagger = ut.conj(), vt.conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcdef,gdef,gh->abch', rho_r, vt_dagger, sst_inv)
+        pr = torch.einsum('ab,cdeb,fghcde->afgh', sst_inv, ut_dagger, rho_l)
+        '''
+
+        return pl, pr
+
+
+    def full_projectors_u(
+            self,
+            c: tuple):
+        r'''build full projectors for CTMRG up move
+        '''
+        pass
+
+
+    def rg_projectors_u2(
+            self,
+            c: tuple[int, int]):
+        r'''build projectors for CTMRG up move with six sites
+        Parameters
+        ----------
+        c: tuple, coordinate of anchoring point
+        '''
+        i, j = c
+        # x: (i, j), the anchoring point
+        # *--*--*--*--*--* MPS
+        # |  |  |  |  |  |
+        # *--*--x--*--*--* MPO
+        # |  |  |  |  |  |
+        mpo, mps, mpo_mps = [None]*6, [None]*6, [None]*6
+        mpo[0] = self._ctms[((i-2) % self._nx, j)]['El']
+        mpo[-1] = self._ctms[((i+3) % self._nx, j)]['Er']
+        for k in range(4):
+            mpo[k+1] = self._dts[((i-1+k) % self._nx, j)]
+        jj = (j+1) % self._ny
+        mps[0] = self._ctms[((i-2) % self._nx, jj)]['C2']
+        mps[-1] = self._ctms[((i+3) % self._nx, jj)]['C3']
+        for k in range(4):
+            mps[k+1] = self._ctms[((i-1+k) % self._nx, jj)]['Eu']
+        # MPO-MPS
+        # !pay attention to the order of output tensor's bonds
+        # *--e,0
+        # |b 
+        # *--c,1
+        # *--d,2
+        # |
+        # a,3
+        mpo_mps[0] = torch.einsum('abcd,eb->ecda', mpo[0], mps[0])
+        mpo_mps[-1] = torch.einsum('abcd,eb->ecda', mpo[-1], mps[-1])
+        # e,0--*--f,3
+        #     |B|b
+        # A,1--*--C,4
+        # a,2--*--c,5
+        #     | |
+        #     D d
+        #     6 7
+        for k in range(4):
+            mpo_mps[k+1] = torch.einsum('AaBbCcDd,efBb->eAafCcDd', mpo[k+1], mps[k+1])
+        # left and right part
+        # *--a--*--e,0
+        # *--b--*--f,1
+        # *--c--*--g,2
+        # |    | |
+        # d    h i
+        # 3    4 5
+        rho_l = torch.einsum(
+                'abcd,abcefghi,efgjklmn->dhimnjkl',
+                mpo_mps[0], mpo_mps[1], mpo_mps[2])
+        # 0,a--*--d--*
+        # 1,b--*--e--*
+        # 2,c--*--f--*
+        #     | |    |
+        #     g h    i
+        #     4 5    3
+        rho_r = torch.einsum(
+                'abcd,efgabchi,jklefgmn->dhimnjkl',
+                mpo_mps[-1], mpo_mps[-2], mpo_mps[-3])
+        # QR and LQ factorizations
+        q, r = tp.linalg.tqr(rho_l, group_dims=((0, 1, 2, 3, 4), (5, 6, 7)), qr_dims=(5, 0))
+        q, l = tp.linalg.tqr(rho_r, group_dims=((0, 1, 2, 3, 4), (5, 6, 7)), qr_dims=(5, 3))
+        # build projectors
+        u, s, v = tp.linalg.svd(torch.einsum('abcd,bcde->ae', r, l))
+        ut, st, vt = u[:, :self._rho], s[:self._rho], v[:self._rho, :]
+        ut_dagger, vt_dagger = ut.t().conj(), vt.t().conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
+        pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
 
         return pl, pr
 
@@ -213,12 +309,12 @@ class QuantumSquareCTMRG(object):
             # |  |  |
             # *--x--* MPO, row-j
             # |  |  |
-            k = (j+1) % self._ny
+            jj = (j+1) % self._ny
             mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
             # MPS
-            mps[0] = self._ctms[((i-1) % self._nx, k)]['C2']
-            mps[1] = self._ctms[(i, k)]['Eu']
-            mps[2] = self._ctms[((i+1) % self._nx, k)]['C3']
+            mps[0] = self._ctms[((i-1) % self._nx, jj)]['C2']
+            mps[1] = self._ctms[(i, jj)]['Eu']
+            mps[2] = self._ctms[((i+1) % self._nx, jj)]['C3']
             # MPO
             mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
             mpo[1] = self._dts[(i, j)]
@@ -238,8 +334,8 @@ class QuantumSquareCTMRG(object):
             mpo_mps[1] = torch.einsum('AaBbCcDd,efBb->eAafCcDd', mpo[1], mps[1])
             mpo_mps[2] = torch.einsum('abcd,eb->ecda', mpo[2], mps[2])
             # build projectors
-            pl, pr = self.rg_projectors_u(c=((i-1) % self._nx, j))
-            pl_prime, pr_prime = self.rg_projectors_u(c=(i, j))
+            pl, pr = self.rg_projectors_u2(c=((i-1) % self._nx, j))
+            pl_prime, pr_prime = self.rg_projectors_u2(c=(i, j))
             # use projectors to compress
             mps[0] = torch.einsum('abcd,abce->ed', mpo_mps[0], pl)
             mps[1] = torch.einsum('abcd,bcdefghi,efgj->ajhi', pr, mpo_mps[1], pl_prime)
@@ -317,6 +413,19 @@ class QuantumSquareCTMRG(object):
         sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
         pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
         pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+        '''
+        u, s, v = tp.linalg.tsvd(
+                torch.einsum('abcdef,abcghi->defghi', rho_l, rho_r),
+                group_dims=((0, 1, 2), (3, 4, 5)),
+                svd_dims=(3, 0))
+        ut, st, vt = u[:, :, :, :self._rho], s[:self._rho], v[:self._rho, :, :, :]
+        # ut_dagger = ut.permute(3, 0, 1, 2).conj()
+        # vt_dagger = vt.permute(1, 2, 3, 0).conj()
+        ut_dagger, vt_dagger = ut.conj(), vt.conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcdef,gdef,gh->abch', rho_r, vt_dagger, sst_inv)
+        pr = torch.einsum('ab,cdeb,fghcde->afgh', sst_inv, ut_dagger, rho_l)
+        '''
 
         return pl, pr
 
@@ -334,10 +443,10 @@ class QuantumSquareCTMRG(object):
             # *--*--* MPS
             mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
             # MPS
-            k = (j-1) % self._ny
-            mps[0] = self._ctms[((i-1) % self._nx, k)]['C0']
-            mps[1] = self._ctms[(i, k)]['Ed']
-            mps[2] = self._ctms[((i+1) % self._nx, k)]['C1']
+            jj = (j-1) % self._ny
+            mps[0] = self._ctms[((i-1) % self._nx, jj)]['C0']
+            mps[1] = self._ctms[(i, jj)]['Ed']
+            mps[2] = self._ctms[((i+1) % self._nx, jj)]['C1']
             # MPO
             mpo[0] = self._ctms[((i-1) % self._nx, j)]['El']
             mpo[1] = self._dts[(i, j)]
@@ -447,6 +556,17 @@ class QuantumSquareCTMRG(object):
         sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
         pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
         pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+        '''
+        u, s, v = tp.linalg.tsvd(
+                torch.einsum('abcdef,ghidef->abcghi', rho_l, rho_r),
+                group_dims=((0, 1, 2), (3, 4, 5)),
+                svd_dims=(3, 0))
+        ut, st, vt = u[:, :, :, :self._rho], s[:self._rho], v[:self._rho, :, :, :]
+        ut_dagger, vt_dagger = ut.conj(), vt.conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcdef,gabc,gh->defh', rho_r, vt_dagger, sst_inv)
+        pr = torch.einsum('ab,cdeb,cdefgh->afgh', sst_inv, ut_dagger, rho_l)
+        '''
 
         return pl, pr
 
@@ -465,10 +585,10 @@ class QuantumSquareCTMRG(object):
             # *--*--
             mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
             # MPS
-            k = (i-1) % self._nx
-            mps[0] = self._ctms[(k, (j-1) % self._ny)]['C0']
-            mps[1] = self._ctms[(k, j)]['El']
-            mps[2] = self._ctms[(k, (j+1) % self._ny)]['C2']
+            ii = (i-1) % self._nx
+            mps[0] = self._ctms[(ii, (j-1) % self._ny)]['C0']
+            mps[1] = self._ctms[(ii, j)]['El']
+            mps[2] = self._ctms[(ii, (j+1) % self._ny)]['C2']
             # MPO
             mpo[0] = self._ctms[(i, (j-1) % self._ny)]['Ed']
             mpo[1] = self._dts[(i, j)]
@@ -581,6 +701,17 @@ class QuantumSquareCTMRG(object):
         sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
         pl = torch.einsum('abcd,de->abce', l, vt_dagger @ sst_inv)
         pr = torch.einsum('ab,bcde->acde', sst_inv @ ut_dagger, r)
+        '''
+        u, s, v = tp.linalg.tsvd(
+                torch.einsum('abcdef,ghidef->abcghi', rho_l, rho_r),
+                group_dims=((0, 1, 2), (3, 4, 5)),
+                svd_dims=(3, 0))
+        ut, st, vt = u[:, :, :, :self._rho], s[:self._rho], v[:self._rho, :, :, :]
+        ut_dagger, vt_dagger = ut.conj(), vt.conj()
+        sst_inv = (1.0 / torch.sqrt(st)).diag().to(self._dtype)
+        pl = torch.einsum('abcdef,gabc,gh->defh', rho_r, vt_dagger, sst_inv)
+        pr = torch.einsum('ab,cdeb,cdefgh->afgh', sst_inv, ut_dagger, rho_l)
+        '''
 
         return pl, pr
 
@@ -599,10 +730,10 @@ class QuantumSquareCTMRG(object):
             # --*--*
             mps, mpo, mpo_mps = [None]*3, [None]*3, [None]*3
             # MPS
-            k = (i+1) % self._nx
-            mps[0] = self._ctms[(k, (j-1) % self._ny)]['C1']
-            mps[1] = self._ctms[(k, j)]['Er']
-            mps[2] = self._ctms[(k, (j+1) % self._ny)]['C3']
+            ii = (i+1) % self._nx
+            mps[0] = self._ctms[(ii, (j-1) % self._ny)]['C1']
+            mps[1] = self._ctms[(ii, j)]['Er']
+            mps[2] = self._ctms[(ii, (j+1) % self._ny)]['C3']
             # MPO
             mpo[0] = self._ctms[(i, (j-1) % self._ny)]['Ed']
             mpo[1] = self._dts[(i, j)]
@@ -758,7 +889,6 @@ class QuantumSquareCTMRG(object):
                     self._dts[((i+1) % self._nx, j)],
                     self._ctms[((i+1) % self._nx, (j+1) % self._ny)]['Eu'])
             den = torch.einsum('abcd,abcd', temp, env_r)
-            # numerator
             # build impure double tensors
             impure_dts = [None]*2
             impure_dts[0] = torch.einsum(
@@ -769,6 +899,7 @@ class QuantumSquareCTMRG(object):
                     self._wfs[((i+1) % self._nx, j)].conj(),
                     op_mpo[1],
                     self._wfs[((i+1) % self._nx, j)])
+            # numerator
             temp = env_l.clone()
             temp = torch.einsum(
                     'eAag,efDd,AaBbCicDd,ghBb->fCich',

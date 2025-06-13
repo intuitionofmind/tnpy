@@ -17,6 +17,7 @@ class ClassicalSquareCTMRG(object):
             self,
             ts: dict,
             rho: int,
+            rand='rand',
             dtype=torch.float64):
         r'''
         Parameters
@@ -52,9 +53,15 @@ class ClassicalSquareCTMRG(object):
         for i, n in enumerate(self._ctm_names):
             # generate corner and edge tensors
             if i < 4:
-                temp.update({n: torch.rand(rho, rho).to(dtype)})
+                if 'rand' == rand:
+                    temp.update({n: torch.rand(rho, rho).to(dtype)})
+                elif 'randn' == rand:
+                    temp.update({n: torch.randn(rho, rho).to(dtype)})
             else:
-                temp.update({n: torch.rand(rho, rho, self._chi).to(dtype)})
+                if 'rand' == rand:
+                    temp.update({n: torch.rand(rho, rho, self._chi).to(dtype)})
+                elif 'randn' == rand:
+                    temp.update({n: torch.randn(rho, rho, self._chi).to(dtype)})
         # every site is associted with a set of CTM tensors
         self._ctms = {}
         for c in self._coords:
@@ -164,6 +171,43 @@ class ClassicalSquareCTMRG(object):
         return pl, pr
 
 
+    def rg_move(
+            self,
+            mpo: list,
+            mps: list,
+            projectors: list):
+        r'''
+        a CTMRG move step
+        update related up boundary CTM tensors
+        effectively merge the boundary MPS down to next row
+        '''
+        # build MPO-MPS
+        mpo_mps = [None]*3
+        # *--d,0
+        # |b
+        # *--c,1
+        # |a,2
+        mpo_mps[0] = torch.einsum('abc,db->dca', mpo[0], mps[0])
+        # e,0--*--f,2
+        #      |b
+        # a,1--*--c,3
+        #      |d,4
+        mpo_mps[1] = torch.einsum('abcd,efb->eafcd', mpo[1], mps[1])
+        mpo_mps[2] = torch.einsum('abc,db->dca', mpo[2], mps[2])
+        # use projectors to compress
+        mps[0] = torch.einsum('abc,abd->dc', mpo_mps[0], projectors[0])
+        mps[1] = torch.einsum('abc,bcdef,deg->agf', projectors[1], mpo_mps[1], projectors[2])
+        mps[2] = torch.einsum('abc,bcd->ad', projectors[3], mpo_mps[2])
+        # push to next row
+        # update related CTM tensors: row-j
+        # self._ctms[((i-1) % self._nx, j)]['C2'] = mps[0] / torch.linalg.norm(mps[0])
+        # self._ctms[(i, j)]['Eu'] = mps[1] / torch.linalg.norm(mps[1])
+        # self._ctms[((i+1) % self._nx, j)]['C3'] = mps[2] / torch.linalg.norm(mps[2])
+        normalized_mps = [mps[i]/torch.linalg.norm(mps[i]) for i in range(3)]
+
+        return normalized_mps
+
+         
     def rg_mu(self):
         r'''
         CTMRG up move

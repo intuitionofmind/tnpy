@@ -1,0 +1,119 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, margin=2cm]{geometry}
+\input{../preamble.tex}
+\graphicspath{{./images/}}
+
+\begin{document}
+
+\section{Tensor network renormalization}\label{sec:tnr-review}
+
+In this section we review the loop-TNR algorithm for tensor networks with periodic boundary condition on a bipartite square lattice (see Fig.~\ref{fig:tnr}a) \cite{Yang2017}. 
+The generalization to fermionic tensors is straightforward, which amounts to adding arrows on all bonds and insert $P$ tensors at proper places in the tensor diagrams. 
+Suppose that the number of \(T_A\) in the network is \(N\), then the tensor network is denoted as \(\tr(T_A^N T_B^N)\). A complete round of TNR consists of the following steps.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[scale=0.5]{coarsegrain.pdf}
+    \caption{A complete round of TNR. (a) A square lattice tensor network containing two types of tensors \(T_A, T_B\). (b) Mixed octagon-square tensor network after SVD of \(T_A, T_B\) and loop optimization. (c) The coarse-grained tensor network after recombining the \(S\) tensors to new \(T'_A, T'_B\). }
+    \label{fig:tnr}
+\end{figure}
+
+\begin{itemize}
+    \item \emph{Entanglement filtering}: To remove short-range entanglement, including the CDL structure in the tensor network, an entanglement filtering step is first performed. Regarding a square in the network as an MPS with periodic boundary condition, standard MPS canonicalization algorithms is applied to find projectors on the links of the network. Then the projectors are absorbed into the network tensors, removing the CDL structure. 
+    
+    \item \emph{Tensor decomposition}: We perform singular value decomposition (SVD) of \(T_A, T_B\)
+    \begin{equation}
+    \arraycolsep=1em
+    \begin{matrix}
+        \includegraphics[scale=0.65]{svd_TA.pdf}
+        &
+        \includegraphics[scale=0.65]{svd_TB.pdf}
+    \end{matrix}
+    \end{equation}
+    Here each \(S\) tensor absorbs the square root of the diagonal singular value matrix, and only the largest \(\chi\) singular values are kept to keep the axis dimension of the resulting tensor small. Then we obtain a mixture of octagons and squares of \(S\) tensors.
+
+    \item \emph{Loop optimization}: The loop-optimization step, which is the most important improvement compared to TRG, reduces the error due to the SVD truncation by minimizing the cost function
+    \begin{equation}
+        f(S_1, ..., S_8)
+        = \left| \begin{matrix}
+            \includegraphics[scale=0.6]{loop_cost.pdf}
+        \end{matrix} \right|^2
+    \end{equation}
+    with respect to the eight rank-3 tensors $S_1, ..., S_8$, where \(| \cdot |\) means the Frobenius 2-norm. Before the optimization \((S_1,S_2) = (S_6,S_5)\) and \((S_3,S_4) = (S_8,S_7)\), but afterwards they are in general different. The minimization is done iteratively with respect to each \(S_i\) while keeping other \(S\) tensors fixed, which amounts to solving a set of linear equations. In practice it is hard to reach convergence in this step, so one usually set a maximum number of "sweeps" over the \(S\) tensors (usually between 100 and 200) after which the program quits the optimization process.
+
+    \item \emph{Coarse-graining}: The eight \(S\) tensors from the loop optimization step is recombined to new \(T'_A, T'_B\) tensors:
+    \begin{gather}
+        T'_A = \begin{matrix}
+            \includegraphics[scale=0.65]{TA-merge.pdf}
+        \end{matrix}
+        , \quad
+        T'_B = \begin{matrix}
+            \includegraphics[scale=0.65]{TB-merge.pdf}
+        \end{matrix}
+    \end{gather}
+    The dimension of each axis of \(T'_A, T'_B\) is \(\chi\). Then we normalize the tensors as
+    \begin{equation}
+        \mathcal{T}'_A = T'_A/f, \quad
+        \mathcal{T}'_B = T'_B/f
+    \end{equation}
+    with the factor \(f > 0\) commonly chosen as
+    \begin{equation}
+        f = |\tr[(T'_A T'_B)^2]|^{1/4}
+        = \left|\ \ \begin{matrix}
+            \includegraphics[scale=0.6]{norm_ab.pdf}
+        \end{matrix}
+        \right|^{1/4}
+    \end{equation}
+    Now the number of tensors in the network is reduced by a half. The normalized \(\mathcal{T}'_A, \mathcal{T}'_B\) serve as the input of the next round of TNR. We note that the TNR algorithm can also be applied to networks of other lattice types (such as the triangular and the honeycomb lattices) with minor modifications of the coarse-graining step.
+\end{itemize}
+
+\subsection{Fixed point tensor and conformal data}
+
+The TNR algorithm can help us identify the conformal field theory (CFT) that describes the critical point of phase transition. After several steps of coarse-graining, the tensor gradually flows to the fixed point corresponding to a CFT. One tensor now represents a large patch of the original network. By constructing a \emph{transfer matrix} of $w \times h$ tensors along the space (horizontal) direction 
+\begin{equation}
+    \begin{matrix}
+        \includegraphics[scale=0.4]{transfer_mat.png}
+    \end{matrix}
+\end{equation}
+the scaling dimensions are related to the eigenvalues (sorted from large to small in magnitude) of the matrix by \cite{gu2009tensor}
+
+\begin{equation}
+    \Delta_i = -\frac{1}{2\pi \operatorname{Im}\tau} 
+    \ln \left| \frac{\lambda_i}{\lambda_0} \right|, \quad
+    \tau = i \frac{w}{vh}
+\end{equation}
+
+The additional coefficient $v$ describes the degree of isotropy of the space-time lattice which will be adjusted to 1 (it is always equal to 1 for classical 2D models, and does not need tuning).
+
+\subsection{Benchmark: (1+1)D spinless fermion model}
+
+We benchmark the performance of the fermionic version of loop-TNR with a (1 + 1)D spinless fermion model \cite{BaoThesis2019}
+\begin{equation} \label{eq:spinless-fermion}
+    H = -t \sum_i 
+    (c_i^\dagger c_{i+1} + c_{i+1}^\dagger c_i) 
+    + V \sum_i \left(n_i - \frac{1}{2}\right)\left(n_{i+1} - \frac{1}{2}\right)
+\end{equation}
+where $n_i = c_i^\dagger c_i$, $t,V > 0$ and we usually set $t = 1$. This model can be mapped from the spin-1/2 Heisenberg XXZ chain via Jordan-Wigner transformation \cite{Senechal2004}; the isotropic case corresponds to $V = 2t$. We consider only $-2t \le V \le 2t$, when the spin model is in the Luttinger liquid phase. The  is described by the compactified boson CFT, with scaling dimensions given by the formula \cite{FrancescoCFT} (the descendants are not included)
+\begin{equation} \label{eq:boson-cft}
+    \Delta_{e,m} = \frac{e^2}{R^2} + \frac{m^2 R^2}{4}
+    \quad (e,m \in \mathbb{Z})
+\end{equation}
+where $R$ is the compactification radius, related to $t, V$ by
+\begin{equation} \label{eq:radius}
+    R^2 = 2(1 - g), \quad 
+    g = \frac{1}{\pi} \arccos \frac{V}{2t}
+\end{equation}
+In Figure \ref{fig:spinless-fermion} we compare the loop-TNR result and CFT prediction (corresponding to the combination of APBC, even parity and PBC, odd parity \cite{Senechal2004}) and see good match for $0.1 < g < 0.8$. When $g$ is close to either $0$ or $1$, the algorithm is affected by {\color{red} some other physical reasons}.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.65]{radius.pdf}
+    \caption{
+        Scaling dimensions extracted from loop-TNR and comparison with CFT prediction Eqs. \eqref{eq:boson-cft} and \eqref{eq:radius} for (1+1)D spinless fermion model Eq. \eqref{eq:spinless-fermion}.
+    }
+    \label{fig:spinless-fermion}
+\end{figure}
+
+\bibliographystyle{ieeetr}
+\bibliography{./refs}
+
+\end{document}
